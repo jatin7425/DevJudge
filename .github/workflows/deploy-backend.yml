@@ -3,7 +3,7 @@ name: Deploy Python Backend to Azure Functions
 on:
   push:
     branches:
-      - master
+      - main
     paths:
       - 'devjudge-backend/**'
 
