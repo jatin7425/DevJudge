@@ -76,6 +76,8 @@ def create_session_cookie(access_token: str, username: str) -> str:
         settings.cookie_name,
         f"{encoded_payload}.{signature}",
         max_age=settings.max_age_seconds,
+        same_site="None",
+        secure=True,
     )
 
 

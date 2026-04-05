@@ -17,6 +17,7 @@ def build_cookie(
     max_age: int | None = None,
     http_only: bool = True,
     same_site: str = "Lax",
+    secure: bool = False,
 ) -> str:
     cookie = SimpleCookie()
     cookie[name] = value
@@ -30,8 +31,24 @@ def build_cookie(
     if http_only:
         morsel["httponly"] = True
 
+    if secure:
+        morsel["secure"] = True
+
     return cookie.output(header="").strip()
 
 
-def build_expired_cookie(name: str, *, path: str = "/") -> str:
-    return build_cookie(name, "", path=path, max_age=0)
+def build_expired_cookie(
+    name: str,
+    *,
+    path: str = "/",
+    same_site: str = "Lax",
+    secure: bool = False,
+) -> str:
+    return build_cookie(
+        name,
+        "",
+        path=path,
+        max_age=0,
+        same_site=same_site,
+        secure=secure,
+    )

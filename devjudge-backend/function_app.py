@@ -188,5 +188,9 @@ def start_dashboard_analysis(req: func.HttpRequest) -> func.HttpResponse:
 
 @app.route(route="auth/logout", methods=[func.HttpMethod.GET], auth_level=func.AuthLevel.ANONYMOUS)
 def auth_logout(req: func.HttpRequest) -> func.HttpResponse:
-    expired_session_cookie = build_expired_cookie(SESSION_COOKIE_NAME)
+    expired_session_cookie = build_expired_cookie(
+        SESSION_COOKIE_NAME,
+        same_site="None",
+        secure=True,
+    )
     return redirect_response(f"{get_frontend_url()}/", cookie=expired_session_cookie)
