@@ -20,6 +20,8 @@ export default function Home() {
   const authExperience = getAuthExperience();
   const fontsClassName = `${syne.variable} ${dmMono.variable}`;
 
+  console.log("AUTH_BACKEND_URL:", process.env?.AUTH_BACKEND_URL);
+  console.log("NEXT_PUBLIC_AUTH_BACKEND_URL:", process.env?.NEXT_PUBLIC_AUTH_BACKEND_URL);
   return authExperience === "original" ? (
     <OriginalAuthPage fontsClassName={fontsClassName} />
   ) : (
