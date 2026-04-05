@@ -36,9 +36,9 @@ jobs:
           pip install -r requirements.txt --target=".python_packages/lib/site-packages"
           popd
 
-      # 4. Take the built code and shove it into Azure using your secret key
+      # 4. Take the built code and shove it into Azure using your secret 
       - name: 'Run Azure Functions Action'
-        uses: Azure/functions-action@v1
+        uses: Azure/functions-action@v1.5.1
         id: fa
         with:
           app-name: ${{ env.AZURE_FUNCTIONAPP_NAME }}
