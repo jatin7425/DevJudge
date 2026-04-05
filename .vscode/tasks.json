@@ -1,0 +1,110 @@
+﻿{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Bootstrap Backend",
+      "type": "shell",
+      "command": "$ErrorActionPreference = 'Stop'; $backend = Join-Path '${workspaceFolder}' 'devjudge-bacekend'; $venvPath = Join-Path $backend '.venv'; $venvPython = Join-Path $venvPath 'Scripts\\python.exe'; if (!(Test-Path $venvPython)) { if (Get-Command py -ErrorAction SilentlyContinue) { & py -3 -m venv $venvPath } else { & python -m venv $venvPath } }; & $venvPython -m pip install -r (Join-Path $backend 'requirements.txt')",
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Bootstrap Frontend",
+      "type": "shell",
+      "command": "npm install",
+      "options": {
+        "cwd": "${workspaceFolder}\\devjudge"
+      },
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated"
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Prepare DevJudge",
+      "dependsOn": [
+        "Bootstrap Backend",
+        "Bootstrap Frontend"
+      ],
+      "dependsOrder": "sequence",
+      "problemMatcher": []
+    },
+    {
+      "label": "Run Backend",
+      "type": "shell",
+      "command": "func start",
+      "options": {
+        "cwd": "${workspaceFolder}\\devjudge-bacekend"
+      },
+      "isBackground": true,
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "focus": false
+      },
+      "problemMatcher": {
+        "owner": "custom",
+        "pattern": [
+          {
+            "regexp": ".+",
+            "message": 0
+          }
+        ],
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": ".+",
+          "endsPattern": "^\\s*Host lock lease acquired by instance ID.*|^\\s*Worker process started and initialized\\..*|^\\s*Functions:\\s*$"
+        }
+      }
+    },
+    {
+      "label": "Run Frontend",
+      "type": "shell",
+      "command": "npm run dev",
+      "options": {
+        "cwd": "${workspaceFolder}\\devjudge"
+      },
+      "isBackground": true,
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "focus": false
+      },
+      "problemMatcher": {
+        "owner": "custom",
+        "pattern": [
+          {
+            "regexp": ".+",
+            "message": 0
+          }
+        ],
+        "background": {
+          "activeOnStart": true,
+          "beginsPattern": ".+",
+          "endsPattern": "^\\s*Ready in .*$|^\\s*Local:\\s+http://localhost:3000.*"
+        }
+      }
+    },
+    {
+      "label": "Start DevJudge",
+      "dependsOn": [
+        "Prepare DevJudge",
+        "Run Backend",
+        "Run Frontend"
+      ],
+      "dependsOrder": "sequence",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": []
+    }
+  ]
+}
