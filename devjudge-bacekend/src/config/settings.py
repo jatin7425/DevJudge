@@ -9,7 +9,7 @@ GITHUB_USER_URL = "https://api.github.com/user"
 GITHUB_SCOPE = "read:user user:email repo"
 SESSION_COOKIE_NAME = "devjudge_session"
 STATE_COOKIE_NAME = "devjudge_oauth_state"
-STATE_COOKIE_PATH = "/api/auth/github"
+STATE_COOKIE_PATH = "/api/auth"
 STATE_MAX_AGE_SECONDS = 600
 SESSION_MAX_AGE_SECONDS = 604800
 
