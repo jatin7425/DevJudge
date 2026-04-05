@@ -5,6 +5,8 @@ function normalizeBaseUrl(baseUrl: string): string {
 }
 
 export function getAuthBackendUrl(): string {
+  console.log("AUTH_BACKEND_URL:", process.env.AUTH_BACKEND_URL);
+  console.log("NEXT_PUBLIC_AUTH_BACKEND_URL:", process.env.NEXT_PUBLIC_AUTH_BACKEND_URL);
   return normalizeBaseUrl(
     process.env.AUTH_BACKEND_URL ??
       process.env.NEXT_PUBLIC_AUTH_BACKEND_URL ??
