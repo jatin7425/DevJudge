@@ -5,7 +5,8 @@
 1. `python -m venv .venv`
 2. `.venv\Scripts\activate`
 3. `pip install -r requirements.txt`
-4. `func start`
+4. Set your database and auth values in `local.settings.json`
+5. `func start`
 
 Use `http://localhost:7071/api/auth/github/signin` to start GitHub OAuth locally.
 Set your GitHub OAuth callback URL to `http://localhost:7071/api/auth/github/callback`.

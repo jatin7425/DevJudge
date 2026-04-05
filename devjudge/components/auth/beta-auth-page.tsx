@@ -10,11 +10,11 @@ export function BetaAuthPage({ fontsClassName }: AuthPageProps) {
 
   return (
     <main
-      className={`${fontsClassName} relative isolate flex min-h-screen items-center justify-center overflow-hidden bg-bg-primary px-3 py-3 sm:px-6 sm:py-8 lg:px-8 xl:px-10 2xl:px-16`}
+      className={`${fontsClassName} relative isolate flex h-[100dvh] items-center justify-center overflow-hidden bg-bg-primary p-3 sm:p-6 lg:p-8 xl:p-10 2xl:p-12`}
     >
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(88,166,255,0.16),transparent_34%),radial-gradient(circle_at_bottom_right,rgba(188,140,255,0.14),transparent_30%)]" />
 
-      <section className="relative w-full max-w-[112rem] overflow-hidden rounded-[1.5rem] border border-border-default bg-bg-secondary shadow-[0_28px_120px_rgba(0,0,0,0.5)] sm:rounded-[2rem]">
+      <section className="relative max-h-full w-full max-w-[112rem] overflow-hidden rounded-[1.5rem] border border-border-default bg-bg-secondary shadow-[0_28px_120px_rgba(0,0,0,0.5)] sm:rounded-[2rem]">
         <div className="pointer-events-none absolute inset-0 [background-image:linear-gradient(rgba(255,255,255,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.03)_1px,transparent_1px)] [background-size:32px_32px] sm:[background-size:40px_40px] xl:[background-size:48px_48px]" />
         <div className="pointer-events-none absolute left-1/2 top-[18%] h-[18rem] w-[18rem] -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(88,166,255,0.16)_0%,transparent_70%)] blur-2xl sm:h-[24rem] sm:w-[24rem] xl:h-[32rem] xl:w-[32rem]" />
         <div className="pointer-events-none absolute -right-20 top-10 h-44 w-44 rounded-full border border-border-muted/60" />
@@ -90,8 +90,8 @@ export function BetaAuthPage({ fontsClassName }: AuthPageProps) {
               </a>
 
               <p className="mt-3 text-center text-xs leading-6 text-text-subtle">
-                OAuth screen UI is ready. Hook the button into your auth flow
-                next.
+                GitHub OAuth is handled by the DevJudge backend and lands you
+                directly in the dashboard.
               </p>
 
               <div className="mt-6 space-y-3">

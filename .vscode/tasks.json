@@ -39,9 +39,9 @@
     {
       "label": "Run Backend",
       "type": "shell",
-      "command": "func start",
+      "command": "$ErrorActionPreference = 'Stop'; $backend = Join-Path '${workspaceFolder}' 'devjudge-bacekend'; $venvPython = Join-Path $backend '.venv\\Scripts\\python.exe'; if (!(Test-Path $venvPython)) { throw 'Backend virtual environment is missing. Run Bootstrap Backend first.' }; $env:PATH = ((Join-Path $backend '.venv\\Scripts') + ';' + $env:PATH); & $venvPython -m pip install -r (Join-Path $backend 'requirements.txt'); Push-Location $backend; try { func start } finally { Pop-Location }",
       "options": {
-        "cwd": "${workspaceFolder}\\devjudge-bacekend"
+        "cwd": "${workspaceFolder}"
       },
       "isBackground": true,
       "presentation": {

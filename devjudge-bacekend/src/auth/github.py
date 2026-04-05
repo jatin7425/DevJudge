@@ -19,9 +19,11 @@ class GitHubOAuthError(RuntimeError):
 
 @dataclass(frozen=True)
 class GitHubUser:
+    github_id: int | None
     username: str
     name: str | None
     email: str | None
+    avatar_url: str | None
 
 
 def generate_oauth_state() -> str:
@@ -102,11 +104,15 @@ def fetch_github_user(access_token: str) -> GitHubUser:
     if not isinstance(username, str) or not username:
         raise GitHubOAuthError("GitHub user response was missing login")
 
+    github_id = response.get("id")
     name = response.get("name")
     email = response.get("email")
+    avatar_url = response.get("avatar_url")
 
     return GitHubUser(
+        github_id=github_id if isinstance(github_id, int) else None,
         username=username,
         name=name if isinstance(name, str) else None,
         email=email if isinstance(email, str) else None,
+        avatar_url=avatar_url if isinstance(avatar_url, str) else None,
     )

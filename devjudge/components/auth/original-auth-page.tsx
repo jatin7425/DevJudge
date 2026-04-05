@@ -10,11 +10,11 @@ export function OriginalAuthPage({ fontsClassName }: AuthPageProps) {
 
   return (
     <main
-      className={`${fontsClassName} relative flex min-h-screen overflow-hidden bg-bg-primary px-4 py-4 sm:px-6 sm:py-8 lg:px-10 lg:py-10`}
+      className={`${fontsClassName} relative flex h-[100dvh] overflow-hidden bg-bg-primary p-4 sm:p-6 lg:p-8`}
     >
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(88,166,255,0.10),transparent_28%),linear-gradient(to_bottom,rgba(255,255,255,0.02),transparent_22%)]" />
 
-      <section className="relative mx-auto flex w-full max-w-7xl flex-col overflow-hidden rounded-[1.75rem] border border-border-default bg-bg-secondary lg:min-h-[44rem] lg:flex-row">
+      <section className="relative mx-auto flex max-h-full w-full max-w-7xl flex-col overflow-hidden rounded-[1.75rem] border border-border-default bg-bg-secondary lg:min-h-[44rem] lg:flex-row">
         <div className="flex flex-1 flex-col justify-between border-b border-border-default p-6 [font-family:var(--font-dm-mono)] sm:p-8 lg:border-b-0 lg:border-r lg:p-12 xl:p-16">
           <div>
             <div className="inline-flex items-center gap-2 rounded-full border border-border-muted bg-bg-primary px-4 py-2 text-[11px] uppercase tracking-[0.24em] text-text-secondary">

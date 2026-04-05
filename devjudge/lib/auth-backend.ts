@@ -15,3 +15,15 @@ export function getAuthBackendUrl(): string {
 export function getGitHubSignInUrl(): string {
   return `${getAuthBackendUrl()}/api/auth/github/signin`;
 }
+
+export function getDashboardUrl(): string {
+  return `${getAuthBackendUrl()}/api/dashboard`;
+}
+
+export function getStartAnalysisUrl(): string {
+  return `${getAuthBackendUrl()}/api/dashboard/analysis/start`;
+}
+
+export function getLogoutUrl(): string {
+  return `${getAuthBackendUrl()}/api/auth/logout`;
+}
