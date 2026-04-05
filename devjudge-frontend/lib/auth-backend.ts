@@ -9,8 +9,8 @@ export function getAuthBackendUrl(): string {
   console.log("NEXT_PUBLIC_AUTH_BACKEND_URL:", process.env?.NEXT_PUBLIC_AUTH_BACKEND_URL);
   const rawUrl =
     process.env.AUTH_BACKEND_URL ??
-    process.env.NEXT_PUBLIC_AUTH_BACKEND_URL ?? "";
-    // DEFAULT_AUTH_BACKEND_URL;
+    process.env.NEXT_PUBLIC_AUTH_BACKEND_URL ??
+    DEFAULT_AUTH_BACKEND_URL;
   console.log("Raw Auth Backend URL:", rawUrl);
   return normalizeBaseUrl(rawUrl);
 }
