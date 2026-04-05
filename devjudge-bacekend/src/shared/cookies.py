@@ -9,7 +9,6 @@ def parse_cookie_header(cookie_header: str | None) -> dict[str, str]:
     cookie.load(cookie_header)
     return {key: morsel.value for key, morsel in cookie.items()}
 
-
 def build_cookie(
     name: str,
     value: str,

@@ -130,7 +130,6 @@ export function DashboardScreen() {
         setScreenState({ status: "unauthenticated" });
         return;
       }
-
       setScreenState({ status: "missing" });
     } catch {
       setActionError("Could not start analysis right now. Try again.");
