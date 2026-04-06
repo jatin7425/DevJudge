@@ -1,3 +1,5 @@
+azure-storage-queue==12.15.0
 azure-functions==1.21.3
 psycopg[binary]==3.2.6
 pydantic>=2,<3
+requests

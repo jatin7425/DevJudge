@@ -5,8 +5,8 @@ import json
 import time
 from dataclasses import dataclass
 
-from src.config.settings import get_session_settings
-from src.shared.cookies import build_cookie
+from config.settings import get_session_settings
+from shared.cookies import build_cookie
 
 
 @dataclass(frozen=True)

@@ -1,18 +1,22 @@
+import json
 import logging
+import sys
+import os
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), 'src'))
 from urllib.parse import quote
 
 import azure.functions as func
 
-from src.auth.github import (
+from auth.github import (
     GitHubOAuthError,
     build_authorization_url,
     exchange_code_for_access_token,
     fetch_github_user,
     generate_oauth_state,
 )
-from src.auth.session import create_session_cookie, read_session_cookie
-from src.config.app import APP_INFO
-from src.config.settings import (
+from auth.session import create_session_cookie, read_session_cookie
+from config.app import APP_INFO
+from config.settings import (
     SESSION_COOKIE_NAME,
     STATE_COOKIE_NAME,
     STATE_COOKIE_PATH,
@@ -20,10 +24,14 @@ from src.config.settings import (
     get_database_settings,
     get_frontend_url,
 )
-from src.db.schemas import UserUpsertSchema
-from src.repository.users import UsersRepository
-from src.shared.cookies import build_cookie, build_expired_cookie, parse_cookie_header
-from src.shared.http import json_response, redirect_response
+from repository.users import UsersRepository
+from repository.analysis_jobs import AnalysisJobsRepository, JobStatus
+from shared.queue import get_analysis_queue
+from shared.http import json_response, redirect_response
+from db.schemas import UserUpsertSchema
+from repository.users import UsersRepository
+from shared.cookies import build_cookie, build_expired_cookie, parse_cookie_header
+from shared.http import json_response, redirect_response
 
 app = func.FunctionApp(http_auth_level=func.AuthLevel.ANONYMOUS)
 users_repository = UsersRepository()
@@ -162,28 +170,67 @@ def dashboard(req: func.HttpRequest) -> func.HttpResponse:
 
 @app.route(route="dashboard/analysis/start", methods=[func.HttpMethod.POST], auth_level=func.AuthLevel.ANONYMOUS)
 def start_dashboard_analysis(req: func.HttpRequest) -> func.HttpResponse:
-    username = _get_authenticated_username(req)
+    try:
+        analysis_jobs_repository = AnalysisJobsRepository()
+        queue = get_analysis_queue()
+        username = _get_authenticated_username(req)
+        if username is None:
+            return json_response({"success": False, "message": "Unauthorized"}, status_code=401)
 
-    if username is None:
-        return json_response({"authenticated": False}, status_code=401)
+        user = users_repository.get_user_by_username(username)
+        if user is None:
+            return json_response({"success": False, "message": "User not found"}, status_code=404)
 
-    state = users_repository.request_initial_analysis(username)
+        # 1. Create job
+        job = analysis_jobs_repository.create_job(user.id)
 
-    if state is None:
-        return json_response({"authenticated": False}, status_code=404)
+        # 2. Check running slots
+        MAX_PARALLEL = 5  # later move to admin config
 
-    return json_response(
-        {
-            "authenticated": True,
-            "dashboard": {
-                "username": state.username,
-                "displayName": state.display_name,
-                "avatarUrl": state.avatar_url,
-                "hasInitialData": state.has_initial_data,
-                "analysisRequested": state.analysis_requested,
+        running_count = analysis_jobs_repository.get_running_jobs_count()
+
+        # 3. Decide execution
+        if running_count < MAX_PARALLEL:
+            status = "running"
+        else:
+            status = "queued"
+
+        # update status if running
+        if status == "running":
+            analysis_jobs_repository.update_status(job.job_id, JobStatus.RUNNING)
+
+        # 4. Push to Azure Queue
+        queue.send_message(json.dumps({
+            "job_id": job.job_id,
+            "user_id": user.id,
+            "username": user.username
+        }))
+
+        # 5. Get queue position (if queued)
+        position = None
+        if status == "queued":
+            position = analysis_jobs_repository.get_queue_position(job.job_id)
+
+        return json_response({
+            "success": True,
+            "message": "Analysis triggered successfully",
+            "data": {
+                "job_id": job.job_id,
+                "status": status,
+                "position": position
+            }
+        })
+
+    except Exception as e:
+        logging.exception("Failed to start dashboard analysis.")
+        return json_response(
+            {
+                "success": False,
+                "message": "Failed to start analysis.",
+                "error": str(e),
             },
-        }
-    )
+            status_code=500,
+        )
 
 
 @app.route(route="auth/logout", methods=[func.HttpMethod.GET], auth_level=func.AuthLevel.ANONYMOUS)

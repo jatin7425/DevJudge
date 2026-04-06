@@ -13,3 +13,11 @@ pnpm dev
 # or
 bun dev
 ```
+
+`npm run dev` uses webpack intentionally. In this repo, Next.js 16's default Turbopack dev server can panic with `Next.js package not found`.
+
+If you want to try Turbopack explicitly, run:
+
+```bash
+npm run dev:turbo
+```
