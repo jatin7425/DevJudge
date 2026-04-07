@@ -29,6 +29,27 @@ export function getStartAnalysisUrl(): string {
   return `${getAuthBackendUrl()}/api/dashboard/analysis/start`;
 }
 
+export function getActiveAnalysisUrl(): string {
+  return `${getAuthBackendUrl()}/api/dashboard/analysis/active`;
+}
+
+export function getAnalysisJobsUrl(): string {
+  return `${getAuthBackendUrl()}/api/dashboard/analysis/jobs`;
+}
+
+export function getAnalysisStatsUrl(): string {
+  return `${getAuthBackendUrl()}/api/dashboard/analysis/stats`;
+}
+
+export function getLatestSuccessAnalysisUrl(): string {
+  return `${getAuthBackendUrl()}/api/dashboard/analysis/latest-success`;
+}
+
+export function getAnalysisEventsUrl(jobId: string): string {
+  const query = new URLSearchParams({ job_id: jobId });
+  return `${getAuthBackendUrl()}/api/dashboard/analysis/stream?${query.toString()}`;
+}
+
 export function getLogoutUrl(): string {
   return `${getAuthBackendUrl()}/api/auth/logout`;
 }

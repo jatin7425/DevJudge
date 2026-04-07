@@ -124,6 +124,7 @@ class AnalysisJobsRepository:
         status: JobStatus,
         result: dict | None = None,
         error: str | None = None,
+        meta: dict | None = None,
     ) -> None:
 
         now = datetime.now(timezone.utc)
@@ -144,12 +145,19 @@ class AnalysisJobsRepository:
         if error is not None:
             updates["error"] = error
 
+        if meta is not None:
+            updates["meta"] = meta
+
         if get_database_provider() == "supabase":
+            supabase_updates = {
+                key: value.isoformat() if isinstance(value, datetime) else value
+                for key, value in updates.items()
+            }
             supabase_request(
                 "PATCH",
                 f"/{self.table_name}",
                 query={"job_id": f"eq.{job_id}"},
-                body=updates,
+                body=supabase_updates,
             )
             return
 
@@ -208,6 +216,17 @@ class AnalysisJobsRepository:
         return int(row["position"]) if row else None
     
     def get_running_jobs_count(self) -> int:
+        if get_database_provider() == "supabase":
+            jobs = cast(list[dict[str, Any]], supabase_request(
+                "GET",
+                f"/{self.table_name}",
+                query={
+                    "status": "eq.running",
+                    "select": "id",
+                },
+            ))
+            return len(jobs)
+
         query = """
             SELECT COUNT(*) AS count
             FROM analysis_jobs
@@ -220,3 +239,179 @@ class AnalysisJobsRepository:
                 row = cursor.fetchone()
 
         return int(row["count"])
+
+    def get_latest_active_job_for_user(self, user_id: int) -> AnalysisJobDbModel | None:
+        if get_database_provider() == "supabase":
+            response = cast(list[dict[str, Any]], supabase_request(
+                "GET",
+                f"/{self.table_name}",
+                query={
+                    "user_id": f"eq.{user_id}",
+                    "status": "in.(queued,running)",
+                    "order": "created_at.desc",
+                    "select": "*",
+                    "limit": "1",
+                },
+            ))
+
+            if not response:
+                return None
+
+            return _build_job_model(response[0])
+
+        query = """
+            SELECT *
+            FROM analysis_jobs
+            WHERE user_id = %(user_id)s
+            AND status IN ('queued', 'running')
+            ORDER BY created_at DESC
+            LIMIT 1
+        """
+
+        with get_postgres_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(query, {"user_id": user_id})
+                row = cast(dict[str, Any], cursor.fetchone())
+
+        if row is None:
+            return None
+
+        return _build_job_model(row)
+
+    def get_latest_completed_job_for_user(self, user_id: int) -> AnalysisJobDbModel | None:
+        if get_database_provider() == "supabase":
+            response = cast(list[dict[str, Any]], supabase_request(
+                "GET",
+                f"/{self.table_name}",
+                query={
+                    "user_id": f"eq.{user_id}",
+                    "status": "eq.completed",
+                    "order": "completed_at.desc",
+                    "select": "*",
+                    "limit": "1",
+                },
+            ))
+
+            if not response:
+                return None
+
+            return _build_job_model(response[0])
+
+        query = """
+            SELECT *
+            FROM analysis_jobs
+            WHERE user_id = %(user_id)s
+            AND status = 'completed'
+            ORDER BY completed_at DESC NULLS LAST, created_at DESC
+            LIMIT 1
+        """
+
+        with get_postgres_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(query, {"user_id": user_id})
+                row = cast(dict[str, Any], cursor.fetchone())
+
+        if row is None:
+            return None
+
+        return _build_job_model(row)
+
+    def list_active_jobs(self, *, limit: int = 50) -> list[AnalysisJobDbModel]:
+        if get_database_provider() == "supabase":
+            response = cast(list[dict[str, Any]], supabase_request(
+                "GET",
+                f"/{self.table_name}",
+                query={
+                    "status": "in.(queued,running)",
+                    "order": "created_at.asc",
+                    "select": "*",
+                    "limit": str(limit),
+                },
+            ))
+            return [_build_job_model(row) for row in response] if response else []
+
+        query = """
+            SELECT *
+            FROM analysis_jobs
+            WHERE status IN ('queued', 'running')
+            ORDER BY created_at ASC
+            LIMIT %(limit)s
+        """
+
+        with get_postgres_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(query, {"limit": limit})
+                rows = cast(list[dict[str, Any]], cursor.fetchall())
+
+        return [_build_job_model(row) for row in rows]
+
+    def list_jobs_for_user(self, user_id: int, *, limit: int = 20) -> list[AnalysisJobDbModel]:
+        if get_database_provider() == "supabase":
+            response = cast(list[dict[str, Any]], supabase_request(
+                "GET",
+                f"/{self.table_name}",
+                query={
+                    "user_id": f"eq.{user_id}",
+                    "order": "created_at.desc",
+                    "select": "*",
+                    "limit": str(limit),
+                },
+            ))
+            return [_build_job_model(row) for row in response] if response else []
+
+        query = """
+            SELECT *
+            FROM analysis_jobs
+            WHERE user_id = %(user_id)s
+            ORDER BY created_at DESC
+            LIMIT %(limit)s
+        """
+
+        with get_postgres_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(query, {"user_id": user_id, "limit": limit})
+                rows = cast(list[dict[str, Any]], cursor.fetchall())
+
+        return [_build_job_model(row) for row in rows]
+
+    def get_job_counts_for_user(self, user_id: int) -> dict[str, int]:
+        if get_database_provider() == "supabase":
+            rows = cast(list[dict[str, Any]], supabase_request(
+                "GET",
+                f"/{self.table_name}",
+                query={
+                    "user_id": f"eq.{user_id}",
+                    "select": "status",
+                },
+            ))
+            counts = {"total": 0, "queued": 0, "running": 0, "completed": 0, "failed": 0}
+            for row in rows or []:
+                status = str(row.get("status", ""))
+                counts["total"] += 1
+                if status in counts:
+                    counts[status] += 1
+            return counts
+
+        query = """
+            SELECT
+                COUNT(*) AS total,
+                COUNT(*) FILTER (WHERE status = 'queued') AS queued,
+                COUNT(*) FILTER (WHERE status = 'running') AS running,
+                COUNT(*) FILTER (WHERE status = 'completed') AS completed,
+                COUNT(*) FILTER (WHERE status = 'failed') AS failed
+            FROM analysis_jobs
+            WHERE user_id = %(user_id)s
+        """
+
+        with get_postgres_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(query, {"user_id": user_id})
+                row = cast(dict[str, Any], cursor.fetchone())
+
+        return {
+            "total": int(row.get("total", 0)),
+            "queued": int(row.get("queued", 0)),
+            "running": int(row.get("running", 0)),
+            "completed": int(row.get("completed", 0)),
+            "failed": int(row.get("failed", 0)),
+        }

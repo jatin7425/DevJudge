@@ -77,7 +77,7 @@ WHERE NOT EXISTS (
     WHERE migration_key = '002_add_analysis_state_to_users'
 );
 
-==================================================================================================
+-- ================================================================================================
 
 -- Migration 003
 -- Creates analysis_jobs table for queue + pipeline tracking
@@ -140,4 +140,54 @@ WHERE NOT EXISTS (
     SELECT 1
     FROM db_migration
     WHERE migration_key = '003_create_analysis_jobs'
+);
+
+-- Migration 004
+-- Hardens analysis_jobs schema for resumable pipeline metadata + status tracking.
+
+ALTER TABLE analysis_jobs
+ADD COLUMN IF NOT EXISTS started_at TIMESTAMPTZ;
+
+ALTER TABLE analysis_jobs
+ADD COLUMN IF NOT EXISTS completed_at TIMESTAMPTZ;
+
+ALTER TABLE analysis_jobs
+ADD COLUMN IF NOT EXISTS result JSONB;
+
+ALTER TABLE analysis_jobs
+ADD COLUMN IF NOT EXISTS error TEXT;
+
+ALTER TABLE analysis_jobs
+ADD COLUMN IF NOT EXISTS meta JSONB;
+
+ALTER TABLE analysis_jobs
+ALTER COLUMN meta SET DEFAULT '{}'::jsonb;
+
+UPDATE analysis_jobs
+SET meta = '{}'::jsonb
+WHERE meta IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_analysis_jobs_user_status
+ON analysis_jobs(user_id, status);
+
+-- Migration 004
+-- Register analysis_jobs hardening entry.
+
+INSERT INTO db_migration (
+    table_name,
+    migration_version,
+    migration_description,
+    migration_key,
+    migration_name
+)
+SELECT
+    'analysis_jobs',
+    '004',
+    'Harden analysis_jobs columns/defaults for resumable pipeline metadata',
+    '004_harden_analysis_jobs_schema',
+    'harden_analysis_jobs_schema'
+WHERE NOT EXISTS (
+    SELECT 1
+    FROM db_migration
+    WHERE migration_key = '004_harden_analysis_jobs_schema'
 );

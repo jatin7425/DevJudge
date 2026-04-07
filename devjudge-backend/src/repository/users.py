@@ -270,3 +270,61 @@ class UsersRepository:
             return None
 
         return _build_user_model(row)
+
+    def mark_initial_analysis_completed(self, username: str) -> None:
+        completed_at = datetime.now(timezone.utc)
+
+        if get_database_provider() == "supabase":
+            supabase_request(
+                "PATCH",
+                f"/{self.table_name}",
+                query={"username": f"eq.{username}"},
+                body={
+                    "analysis_requested_at": None,
+                    "initial_data_collected_at": completed_at.isoformat(),
+                },
+            )
+            return
+
+        query = """
+            UPDATE users
+            SET
+                analysis_requested_at = NULL,
+                initial_data_collected_at = %(completed_at)s,
+                updated_at = NOW()
+            WHERE username = %(username)s
+        """
+
+        with get_postgres_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    query,
+                    {
+                        "username": username,
+                        "completed_at": completed_at,
+                    },
+                )
+            connection.commit()
+
+    def mark_initial_analysis_failed(self, username: str) -> None:
+        if get_database_provider() == "supabase":
+            supabase_request(
+                "PATCH",
+                f"/{self.table_name}",
+                query={"username": f"eq.{username}"},
+                body={"analysis_requested_at": None},
+            )
+            return
+
+        query = """
+            UPDATE users
+            SET
+                analysis_requested_at = NULL,
+                updated_at = NOW()
+            WHERE username = %(username)s
+        """
+
+        with get_postgres_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(query, {"username": username})
+            connection.commit()

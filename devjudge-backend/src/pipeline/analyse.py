@@ -16,8 +16,8 @@ class AnalysisPipeline:
         self.repos = None
     
     
-    def pipeline_log_message(self, message: str) -> str:
-        send_log(self.job_id, message)
+    def pipeline_log_message(self, message: str, *, progress: int | None = None) -> str:
+        send_log(self.job_id, message, progress=progress)
         return message
 
     def _repo_owner(self, repo: dict) -> str:
@@ -36,41 +36,41 @@ class AnalysisPipeline:
 
     def trigger(self) -> None | dict:
         try:
-            self.pipeline_log_message("Pipeline started...")
+            self.pipeline_log_message("Pipeline started...", progress=20)
             self.repos = self.git.repos()
-            self.pipeline_log_message(f"Found {len(self.repos)} repositories.")
+            self.pipeline_log_message(f"Found {len(self.repos)} repositories.", progress=30)
 
-            self.pipeline_log_message("Beginning analysis steps...")
+            self.pipeline_log_message("Beginning analysis steps...", progress=35)
             self._analyse_user_data()
-            self.pipeline_log_message("User data analysis completed.")
+            self.pipeline_log_message("User data analysis completed.", progress=45)
             sleep(1)  # brief pause for log clarity
-            self.pipeline_log_message("Analyzing repositories...")
+            self.pipeline_log_message("Analyzing repositories...", progress=50)
             self._analyse_repos()
-            self.pipeline_log_message("Repository analysis completed.")
+            self.pipeline_log_message("Repository analysis completed.", progress=60)
             sleep(1)
-            self.pipeline_log_message("Analyzing languages...")
+            self.pipeline_log_message("Analyzing languages...", progress=65)
             self._analyse_languages()
-            self.pipeline_log_message("Language analysis completed.")
+            self.pipeline_log_message("Language analysis completed.", progress=72)
             sleep(1)
-            self.pipeline_log_message("Analyzing commit activity...")
+            self.pipeline_log_message("Analyzing commit activity...", progress=76)
             self._analyse_commit_activity()
-            self.pipeline_log_message("Commit activity analysis completed.")
+            self.pipeline_log_message("Commit activity analysis completed.", progress=82)
             sleep(1)
-            self.pipeline_log_message("Analyzing events...")
+            self.pipeline_log_message("Analyzing events...", progress=85)
             self._analyse_events()
-            self.pipeline_log_message("Event analysis completed.")
+            self.pipeline_log_message("Event analysis completed.", progress=89)
             sleep(1)
-            self.pipeline_log_message("Analyzing issues/PRs...")
+            self.pipeline_log_message("Analyzing issues/PRs...", progress=92)
             self._analyse_issues()
-            self.pipeline_log_message("Issues/PRs analysis completed.")
+            self.pipeline_log_message("Issues/PRs analysis completed.", progress=95)
             sleep(1)
-            self.pipeline_log_message("Deriving insights...")
+            self.pipeline_log_message("Deriving insights...", progress=97)
             self._derive_insights()
-            self.pipeline_log_message("Insights derived.")
+            self.pipeline_log_message("Insights derived.", progress=99)
             sleep(1)
-            self.pipeline_log_message("Clearing GitHub client...")
+            self.pipeline_log_message("Clearing GitHub client...", progress=99)
             self.git.clear()
-            self.pipeline_log_message("Pipeline completed successfully.")
+            self.pipeline_log_message("Pipeline completed successfully.", progress=100)
             return self.insights
         except Exception as e:
             print(f"Error during analysis pipeline: {e}")

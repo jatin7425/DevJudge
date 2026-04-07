@@ -64,6 +64,15 @@ def get_frontend_url() -> str:
     return os.getenv("DEVJUDGE_FRONTEND_URL", DEFAULT_FRONTEND_URL).rstrip("/")
 
 
+def should_run_worker_inline() -> bool:
+    explicit = os.getenv("DEVJUDGE_INLINE_WORKER")
+    if explicit is not None:
+        return explicit.strip().lower() in {"1", "true", "yes", "on"}
+
+    # Local dev default: avoid dependency on queue trigger/azurite reliability.
+    return os.getenv("AzureWebJobsStorage", "").strip() == "UseDevelopmentStorage=true"
+
+
 def get_github_settings() -> GitHubSettings:
     return GitHubSettings(
         client_id=_get_required_setting("GITHUB_CLIENT_ID"),
@@ -85,13 +94,19 @@ def get_database_settings() -> DatabaseSettings:
 
     if runtime_environment in {"production", "prod", "supabase", "cloud"}:
         supabase_url = os.getenv("SUPABASE_URL") or os.getenv("NEXT_PUBLIC_SUPABASE_URL")
-        supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY") or os.getenv("SUPABASE_ANON_KEY")
+        supabase_key = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
 
         if not supabase_url or not supabase_key:
             raise RuntimeError(
                 "Missing Supabase Data API configuration. Set SUPABASE_URL and "
                 "SUPABASE_SERVICE_ROLE_KEY."
             )
+
+        # if supabase_key.startswith("sb_publishable_"):
+        #     raise RuntimeError(
+        #         "Invalid SUPABASE_SERVICE_ROLE_KEY: received a publishable key "
+        #         "(sb_publishable_*). Use the backend service-role/secret key."
+        #     )
 
         return DatabaseSettings(
             environment=runtime_environment,
