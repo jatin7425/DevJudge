@@ -7,3 +7,7 @@ node_modules
 .env.local
 local.settings.json
 .vscode
+*json
+*/.azurite/*
+devjudge-backend/.azurite
+.codex

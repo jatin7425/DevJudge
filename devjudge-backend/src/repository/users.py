@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import cast, Any
 
-from src.db.connect import get_database_provider, get_postgres_connection, supabase_request
-from src.db.models import UserDbModel
-from src.db.schemas import DashboardStateSchema, UserUpsertSchema
+from db.connect import get_database_provider, get_postgres_connection, supabase_request
+from db.models import UserDbModel
+from db.schemas import DashboardStateSchema, UserUpsertSchema
 
 
 def _parse_timestamp(value: object) -> datetime | None:
@@ -24,15 +25,15 @@ def _parse_timestamp(value: object) -> datetime | None:
     return None
 
 
-def _build_user_model(row: dict[str, object]) -> UserDbModel:
+def _build_user_model(row: dict[str, Any]) -> UserDbModel:
     return UserDbModel(
-        id=int(row["id"]),
+        id=int(cast(int, row["id"])),
         username=str(row["username"]),
-        email=row.get("email") if isinstance(row.get("email"), str) else None,
-        display_name=row.get("display_name") if isinstance(row.get("display_name"), str) else None,
-        avatar_url=row.get("avatar_url") if isinstance(row.get("avatar_url"), str) else None,
-        github_id=int(row["github_id"]) if row.get("github_id") is not None else None,
-        access_token=row.get("access_token") if isinstance(row.get("access_token"), str) else None,
+        email=cast(str | None, row.get("email")) if isinstance(row.get("email"), str) else None,
+        display_name=cast(str | None, row.get("display_name")) if isinstance(row.get("display_name"), str) else None,
+        avatar_url=cast(str | None, row.get("avatar_url")) if isinstance(row.get("avatar_url"), str) else None,
+        github_id=int(cast(int, row["github_id"])) if row.get("github_id") is not None else None,
+        access_token=cast(str, row.get("access_token")),
         analysis_requested_at=_parse_timestamp(row.get("analysis_requested_at")),
         initial_data_collected_at=_parse_timestamp(row.get("initial_data_collected_at")),
     )
@@ -59,13 +60,13 @@ class UsersRepository:
         with get_postgres_connection() as connection:
             with connection.cursor() as cursor:
                 cursor.execute("SELECT 1 AS ok")
-                row = cursor.fetchone()
+                row = cast(dict[str, Any], cursor.fetchone())
 
         return bool(row) and row["ok"] == 1
 
     def upsert_user(self, payload: UserUpsertSchema) -> UserDbModel:
         if get_database_provider() == "supabase":
-            response = supabase_request(
+            response = cast(list[dict[str, Any]], supabase_request(
                 "POST",
                 f"/{self.table_name}",
                 query={
@@ -74,7 +75,7 @@ class UsersRepository:
                 },
                 body=payload.model_dump(),
                 prefer="resolution=merge-duplicates,return=representation",
-            )
+            ))
 
             if not isinstance(response, list) or not response:
                 raise RuntimeError("Failed to persist user through Supabase Data API.")
@@ -121,7 +122,7 @@ class UsersRepository:
         with get_postgres_connection() as connection:
             with connection.cursor() as cursor:
                 cursor.execute(query, payload.model_dump())
-                row = cursor.fetchone()
+                row = cast(dict[str, Any], cursor.fetchone())
             connection.commit()
 
         if row is None:
@@ -131,7 +132,7 @@ class UsersRepository:
 
     def get_dashboard_state(self, username: str) -> DashboardStateSchema | None:
         if get_database_provider() == "supabase":
-            response = supabase_request(
+            response = cast(list[dict[str, Any]], supabase_request(
                 "GET",
                 f"/{self.table_name}",
                 query={
@@ -139,7 +140,7 @@ class UsersRepository:
                     "select": "id,github_id,username,email,display_name,avatar_url,access_token,analysis_requested_at,initial_data_collected_at",
                     "limit": "1",
                 },
-            )
+            ))
 
             if not isinstance(response, list) or not response:
                 return None
@@ -165,7 +166,7 @@ class UsersRepository:
         with get_postgres_connection() as connection:
             with connection.cursor() as cursor:
                 cursor.execute(query, {"username": username})
-                row = cursor.fetchone()
+                row = cast(dict[str, Any], cursor.fetchone())
 
         if row is None:
             return None
@@ -176,7 +177,7 @@ class UsersRepository:
         requested_at = datetime.now(timezone.utc)
 
         if get_database_provider() == "supabase":
-            response = supabase_request(
+            response = cast(list[dict[str, Any]], supabase_request(
                 "PATCH",
                 f"/{self.table_name}",
                 query={
@@ -185,7 +186,7 @@ class UsersRepository:
                 },
                 body={"analysis_requested_at": requested_at.isoformat()},
                 prefer="return=representation",
-            )
+            ))
 
             if not isinstance(response, list) or not response:
                 return None
@@ -219,10 +220,111 @@ class UsersRepository:
                         "requested_at": requested_at,
                     },
                 )
-                row = cursor.fetchone()
+                row = cast(dict[str, Any], cursor.fetchone())
             connection.commit()
 
         if row is None:
             return None
 
         return _build_dashboard_state(_build_user_model(row))
+    
+    def get_user_by_username(self, username: str) -> UserDbModel | None:
+        if get_database_provider() == "supabase":
+            response = cast(list[dict[str, Any]], supabase_request(
+                "GET",
+                f"/{self.table_name}",
+                query={
+                    "username": f"eq.{username}",
+                    "select": "id,github_id,username,email,display_name,avatar_url,access_token,analysis_requested_at,initial_data_collected_at",
+                    "limit": "1",
+                },
+            ))
+
+            if not isinstance(response, list) or not response:
+                return None
+
+            return _build_user_model(response[0])
+
+        query = """
+            SELECT
+                id,
+                github_id,
+                username,
+                email,
+                display_name,
+                avatar_url,
+                access_token,
+                analysis_requested_at,
+                initial_data_collected_at
+            FROM users
+            WHERE username = %(username)s
+            LIMIT 1
+        """
+
+        with get_postgres_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(query, {"username": username})
+                row = cast(dict[str, Any], cursor.fetchone())
+
+        if row is None:
+            return None
+
+        return _build_user_model(row)
+
+    def mark_initial_analysis_completed(self, username: str) -> None:
+        completed_at = datetime.now(timezone.utc)
+
+        if get_database_provider() == "supabase":
+            supabase_request(
+                "PATCH",
+                f"/{self.table_name}",
+                query={"username": f"eq.{username}"},
+                body={
+                    "analysis_requested_at": None,
+                    "initial_data_collected_at": completed_at.isoformat(),
+                },
+            )
+            return
+
+        query = """
+            UPDATE users
+            SET
+                analysis_requested_at = NULL,
+                initial_data_collected_at = %(completed_at)s,
+                updated_at = NOW()
+            WHERE username = %(username)s
+        """
+
+        with get_postgres_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    query,
+                    {
+                        "username": username,
+                        "completed_at": completed_at,
+                    },
+                )
+            connection.commit()
+
+    def mark_initial_analysis_failed(self, username: str) -> None:
+        if get_database_provider() == "supabase":
+            supabase_request(
+                "PATCH",
+                f"/{self.table_name}",
+                query={"username": f"eq.{username}"},
+                body={"analysis_requested_at": None},
+            )
+            return
+
+        query = """
+            UPDATE users
+            SET
+                analysis_requested_at = NULL,
+                updated_at = NOW()
+            WHERE username = %(username)s
+        """
+
+        with get_postgres_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(query, {"username": username})
+            connection.commit()

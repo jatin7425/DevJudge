@@ -5,7 +5,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode, urlsplit, urlunsplit
 from urllib.request import Request, urlopen
 
-from src.config.settings import (
+from config.settings import (
     GITHUB_AUTHORIZE_URL,
     GITHUB_TOKEN_URL,
     GITHUB_USER_URL,

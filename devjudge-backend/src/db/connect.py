@@ -7,7 +7,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
-from src.config.settings import get_database_settings
+from config.settings import get_database_settings
 
 
 def get_database_provider() -> str:
