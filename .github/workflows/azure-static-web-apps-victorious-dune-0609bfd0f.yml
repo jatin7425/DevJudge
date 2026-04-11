@@ -15,7 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     name: Build and Deploy Job
     permissions:
-       id-token: write
+       # id-token: write
        contents: read
     steps:
       - uses: actions/checkout@v3
@@ -43,10 +43,10 @@ jobs:
           app_location: "./devjudge-frontend" # App source code path
           api_location: "" # Api source code path - optional
           output_location: "" # Built app content directory - optional
-          github_id_token: ${{ steps.idtoken.outputs.result }}
+          # github_id_token: ${{ steps.idtoken.outputs.result }}
         env:
           NEXT_PUBLIC_AUTH_BACKEND_URL: ${{ secrets.NEXT_PUBLIC_AUTH_BACKEND_URL }}
-          NEXT_PUBLIC_DEVJUDGE_AUTH_EXPERIENCE: ${{secrets.NEXT_PUBLIC_DEVJUDGE_AUTH_EXPERIENCE }}
+          NEXT_PUBLIC_DEVJUDGE_AUTH_EXPERIENCE: ${{ secrets.NEXT_PUBLIC_DEVJUDGE_AUTH_EXPERIENCE }}
           ###### End of Repository/Build Configurations ######
 
   close_pull_request_job:
