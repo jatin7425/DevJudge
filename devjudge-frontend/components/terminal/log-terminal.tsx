@@ -517,7 +517,7 @@ export function LogTerminal({ isOpen, onClose, request }: LogTerminalProps) {
       if (line.kind === "table") {
         const headerRow = line.headers.join("\t");
         const bodyRows = line.rows.map((row) => row.join("\t")).join("\n");
-        return `${headerRow}\n${bodyRows}`;
+        return [headerRow, bodyRows].filter(Boolean).join("\n");
       }
       return line.text;
     }).join("\n");
