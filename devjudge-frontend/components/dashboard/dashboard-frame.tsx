@@ -46,8 +46,14 @@ const NAV_ITEMS: NavItem[] = [
   {
     href: "/dashboard",
     label: "Overview",
-    caption: "Run analysis",
+    caption: "Run and monitor",
     icon: LayoutGridIcon,
+  },
+  {
+    href: "/dashboard/analytics",
+    label: "Analytics",
+    caption: "Scores and insights",
+    icon: SparkBarsIcon,
   },
   {
     href: "/dashboard/jobs",
@@ -62,6 +68,9 @@ function joinClassNames(...parts: Array<string | false | null | undefined>): str
 }
 
 function isActive(pathname: string, href: string): boolean {
+  if (href === "/dashboard") {
+    return pathname === href;
+  }
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
@@ -80,7 +89,7 @@ export function DashboardFrame({
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_top_left,rgba(88,166,255,0.18),transparent_26%),radial-gradient(circle_at_80%_20%,rgba(63,185,80,0.08),transparent_18%),radial-gradient(circle_at_bottom_right,rgba(210,153,34,0.1),transparent_24%)]" />
 
       <div className="relative mx-auto flex min-h-[100dvh] max-w-[1680px]">
-        <aside className="hidden w-[280px] shrink-0 border-r border-border-default bg-[linear-gradient(180deg,rgba(13,17,23,0.98),rgba(22,27,34,0.98))] px-5 py-6 lg:flex lg:flex-col">
+        <aside className="sticky top-0 hidden h-screen w-[280px] shrink-0 overflow-y-auto border-r border-border-default bg-[linear-gradient(180deg,rgba(13,17,23,0.98),rgba(22,27,34,0.98))] px-5 py-6 lg:flex lg:flex-col">
           <div className="flex items-center gap-3">
             <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-border-muted bg-bg-secondary text-accent-primary shadow-[0_0_24px_rgba(88,166,255,0.14)]">
               <SignalIcon className="h-5 w-5" />
@@ -103,8 +112,8 @@ export function DashboardFrame({
               GitHub Intelligence
             </p>
             <p className="mt-2 text-sm leading-6 text-text-subtle">
-              Trigger analysis, watch pipeline logs, and inspect completed jobs
-              from one place.
+              Start with Overview. Run analysis, wait for completion, then open
+              Analytics for the readable report.
             </p>
           </div>
 
@@ -148,7 +157,20 @@ export function DashboardFrame({
             })}
           </nav>
 
-          <div className="mt-auto space-y-4">
+          <div className="mt-8 rounded-[1.2rem] border border-border-default bg-bg-primary/80 p-4">
+            <div className="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-text-muted">
+              <PulseIcon className="h-4 w-4 text-success" />
+              How To Use
+            </div>
+            <ol className="mt-4 space-y-3 text-sm leading-6 text-text-secondary">
+              <li>1. Click Run Analysis on Overview.</li>
+              <li>2. Watch the live logs until the run finishes.</li>
+              <li>3. Open Analytics to review the report.</li>
+              <li>4. Use Jobs only when you need history or raw payloads.</li>
+            </ol>
+          </div>
+
+          <div className="mt-auto space-y-4 pt-6">
             <div className="rounded-[1.2rem] border border-border-default bg-bg-primary/80 p-4">
               <div className="flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-text-muted">
                 <PulseIcon className="h-4 w-4 text-success" />

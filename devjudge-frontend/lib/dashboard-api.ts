@@ -2,6 +2,7 @@ import {
   getAuthBackendUrl,
   getActiveAnalysisUrl,
   getAnalysisEventsUrl,
+  getAnalysisJobUrl,
   getAnalysisJobsUrl,
   getAnalysisStatsUrl,
   getLatestSuccessAnalysisUrl,
@@ -52,6 +53,15 @@ export type JobSummary = {
   result?: Record<string, unknown> | null;
 };
 
+export type JobLogEvent = {
+  id: number;
+  job_id: string;
+  message: string;
+  progress?: number | null;
+  status?: string | null;
+  timestamp: string;
+};
+
 export type JobStats = {
   total: number;
   queued: number;
@@ -99,6 +109,11 @@ type JobStatsResponse = {
 };
 
 type LatestSuccessResponse = {
+  success: boolean;
+  data?: JobSummary | null;
+};
+
+type JobDetailResponse = {
   success: boolean;
   data?: JobSummary | null;
 };
@@ -275,6 +290,29 @@ export async function fetchJobStats(): Promise<JobStats> {
   }
 
   return payload.data;
+}
+
+export async function fetchJobDetail(jobId: string): Promise<JobSummary | null> {
+  const response = await fetch(getAnalysisJobUrl(jobId), {
+    method: "GET",
+    credentials: "include",
+    cache: "no-store",
+  });
+
+  if (response.status === 401 || response.status === 404) {
+    return null;
+  }
+
+  if (!response.ok) {
+    throw new Error(`Job detail request failed with status ${response.status}`);
+  }
+
+  const payload = (await response.json()) as JobDetailResponse;
+  if (!payload.success) {
+    throw new Error("Job detail response unsuccessful.");
+  }
+
+  return payload.data ?? null;
 }
 
 export async function fetchLatestSuccessfulJob(): Promise<JobSummary | null> {

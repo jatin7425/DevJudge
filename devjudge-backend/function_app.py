@@ -68,7 +68,7 @@ def _ensure_inline_recovery_once() -> None:
         _inline_recovery_started = True
 
 
-def _serialize_job(job, *, include_result: bool = False) -> dict:
+def _serialize_job(job, *, include_result: bool = False, include_meta: bool = True) -> dict:
     meta = job.meta if isinstance(job.meta, dict) else {}
     data = {
         "job_id": job.job_id,
@@ -77,8 +77,8 @@ def _serialize_job(job, *, include_result: bool = False) -> dict:
         "started_at": job.started_at.isoformat() if job.started_at else None,
         "completed_at": job.completed_at.isoformat() if job.completed_at else None,
         "error": job.error,
-        "meta": meta,
-        "steps": meta.get("steps", {}),
+        "meta": meta if include_meta else {},
+        "steps": meta.get("steps", {}) if include_meta else {},
     }
     if include_result:
         data["result"] = job.result
@@ -355,7 +355,7 @@ def list_dashboard_analysis_jobs(req: func.HttpRequest) -> func.HttpResponse:
         {
             "success": True,
             "data": {
-                "jobs": [_serialize_job(job, include_result=True) for job in jobs],
+                "jobs": [_serialize_job(job, include_result=False, include_meta=False) for job in jobs],
             },
         }
     )
@@ -402,6 +402,34 @@ def get_latest_successful_analysis(req: func.HttpRequest) -> func.HttpResponse:
         {
             "success": True,
             "data": _serialize_job(job, include_result=True),
+        }
+    )
+
+
+@app.route(route="dashboard/analysis/job", methods=[func.HttpMethod.GET], auth_level=func.AuthLevel.ANONYMOUS)
+def get_dashboard_analysis_job(req: func.HttpRequest) -> func.HttpResponse:
+    _ensure_inline_recovery_once()
+    username = _get_authenticated_username(req)
+    if username is None:
+        return json_response({"success": False, "message": "Unauthorized"}, status_code=401)
+
+    job_id = (req.params.get("job_id") or "").strip()
+    if not job_id:
+        return json_response({"success": False, "message": "Missing required query param: job_id"}, status_code=400)
+
+    user = users_repository.get_user_by_username(username)
+    if user is None:
+        return json_response({"success": False, "message": "User not found"}, status_code=404)
+
+    repository = AnalysisJobsRepository()
+    job = repository.get_job(job_id)
+    if job is None or job.user_id != user.id:
+        return json_response({"success": False, "message": "Job not found"}, status_code=404)
+
+    return json_response(
+        {
+            "success": True,
+            "data": _serialize_job(job, include_result=True, include_meta=True),
         }
     )
 

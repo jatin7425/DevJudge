@@ -41,6 +41,11 @@ export function getAnalysisStatsUrl(): string {
   return `${getAuthBackendUrl()}/api/dashboard/analysis/stats`;
 }
 
+export function getAnalysisJobUrl(jobId: string): string {
+  const query = new URLSearchParams({ job_id: jobId });
+  return `${getAuthBackendUrl()}/api/dashboard/analysis/job?${query.toString()}`;
+}
+
 export function getLatestSuccessAnalysisUrl(): string {
   return `${getAuthBackendUrl()}/api/dashboard/analysis/latest-success`;
 }
