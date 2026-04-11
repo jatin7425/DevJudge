@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { TerminalIcon, XIcon } from "@/components/dashboard/dashboard-frame";
 import { type TerminalRequest } from "@/components/terminal/terminal-context";
@@ -108,13 +108,13 @@ function getSavedLogs(job: JobSummary | null): JobLogEvent[] {
     );
   }).map((item, index) => ({
     ...item,
-    id: item.id ?? index,
+    id: item.id?.toString() ?? `log-${index}`,
     job_id: item.job_id ?? job?.job_id ?? "unknown",
-    timestamp: item.timestamp ?? new Date().toISOString()
+    timestamp: item.timestamp ?? new Date().toISOString(),
   }));
 }
 
-export function LogTerminal({ isOpen, onClose, request }: LogTerminalProps) {
+function LogTerminalContent({ isOpen, onClose, request }: LogTerminalProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const selectedJobIdFromUrl = searchParams.get("jobId");
@@ -997,5 +997,13 @@ export function LogTerminal({ isOpen, onClose, request }: LogTerminalProps) {
         </form>
       </section>
     </div>
+  );
+}
+
+export function LogTerminal(props: LogTerminalProps) {
+  return (
+    <Suspense fallback={null}>
+      <LogTerminalContent {...props} />
+    </Suspense>
   );
 }

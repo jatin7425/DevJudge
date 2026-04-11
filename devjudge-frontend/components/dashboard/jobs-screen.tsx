@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 
 import {
   DashboardPanel,
@@ -47,9 +47,9 @@ function getJobLogs(job: JobSummary | null): JobLogEvent[] {
     );
   }).map((item, index) => ({
     ...item,
-    id: item.id ?? index,
+    id: item.id?.toString() ?? `log-${index}`,
     job_id: item.job_id ?? job?.job_id ?? "unknown",
-    timestamp: item.timestamp ?? new Date().toISOString()
+    timestamp: item.timestamp ?? new Date().toISOString(),
   }));
 }
 
@@ -72,7 +72,7 @@ type JobsScreenProps = {
   setPageMetadata: (metadata: { eyebrow: string; title: string; actions?: ReactNode }) => void;
 };
 
-export function JobsScreen({ setPageMetadata }: JobsScreenProps) {
+function JobsScreenContent({ setPageMetadata }: JobsScreenProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const requestedJobId = searchParams.get("jobId");
@@ -460,5 +460,13 @@ export function JobsScreen({ setPageMetadata }: JobsScreenProps) {
         </aside>
       </div>
     </>
+  );
+}
+
+export function JobsScreen(props: JobsScreenProps) {
+  return (
+    <Suspense fallback={null}>
+      <JobsScreenContent {...props} />
+    </Suspense>
   );
 }
