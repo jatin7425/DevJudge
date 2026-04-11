@@ -121,6 +121,7 @@ export function LogTerminal({ isOpen, onClose, request }: LogTerminalProps) {
 
   const [tabs, setTabs] = useState<Tab[]>([]);
   const [activeTabId, setActiveTabId] = useState<string>("");
+  const [isDesktop, setIsDesktop] = useState(false);
   
   const [height, setHeight] = useState(380);
   const [isResizing, setIsResizing] = useState(false);
@@ -139,6 +140,13 @@ export function LogTerminal({ isOpen, onClose, request }: LogTerminalProps) {
   const inputRef = useRef<HTMLInputElement | null>(null);
   const scrollViewportRef = useRef<HTMLDivElement | null>(null);
   const seenEventIdsRef = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    const handleResize = () => setIsDesktop(window.innerWidth >= 1024);
+    handleResize();
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   // Handle Mouse Resizing
   const startResizing = useCallback((e: React.MouseEvent) => {
@@ -608,9 +616,6 @@ export function LogTerminal({ isOpen, onClose, request }: LogTerminalProps) {
       clearStream();
       return;
     }
-
-    inputRef.current?.focus();
-
     const createInitialShell = () => {
       const shellId = `shell-${Date.now()}`;
       setTabs([{ id: shellId, title: "Interactive Shell", type: "shell", lines: [] }]);
@@ -657,8 +662,6 @@ export function LogTerminal({ isOpen, onClose, request }: LogTerminalProps) {
     };
     setTabs(current => [...current, newShell]);
     setActiveTabId(shellId);
-    // Give React a moment to render the tab before focusing
-    setTimeout(() => inputRef.current?.focus(), 10);
   }, []);
 
   const closeTab = useCallback((id: string, e: React.MouseEvent) => {
@@ -686,6 +689,12 @@ export function LogTerminal({ isOpen, onClose, request }: LogTerminalProps) {
   const activeTab = useMemo(() => tabs.find(t => t.id === activeTabId), [tabs, activeTabId]);
 
   useEffect(() => {
+    if (isOpen && activeTabId) {
+      inputRef.current?.focus();
+    }
+  }, [isOpen, activeTabId, request]);
+
+  useEffect(() => {
     if (!isOpen) return;
     scrollViewportRef.current?.scrollTo({
       top: scrollViewportRef.current.scrollHeight,
@@ -710,7 +719,6 @@ export function LogTerminal({ isOpen, onClose, request }: LogTerminalProps) {
     }
 
     if (request.kind === "open") {
-      inputRef.current?.focus();
     }
   }, [attachStartedAnalysis, isOpen, request]);
 
@@ -725,7 +733,7 @@ export function LogTerminal({ isOpen, onClose, request }: LogTerminalProps) {
 
   return (
     <div 
-      style={{ height: typeof window !== 'undefined' && window.innerWidth >= 1024 ? desktopHeight : '100%' }}
+      style={{ height: isDesktop ? desktopHeight : '100%' }}
       className={`fixed z-[100] flex flex-col bg-[#1e1e1e] [font-family:var(--font-geist-mono)] shadow-2xl transition-all duration-200 ease-in-out rounded-none
         bottom-0 right-0 border-[#333]
         lg:left-0 lg:border-t
@@ -754,12 +762,14 @@ export function LogTerminal({ isOpen, onClose, request }: LogTerminalProps) {
                   {tab.type === "logs" ? <TerminalIcon className="h-3 w-3" /> : <div className="h-1.5 w-1.5 rounded-full bg-green-500" />}
                   <span className="truncate max-w-[150px]">{tab.type === "logs" ? terminalTitle : tab.title}</span>
                   
-                  <span 
+                  <button
+                    type="button"
                     onClick={(e) => closeTab(tab.id, e)}
-                    className="ml-1 opacity-0 group-hover:opacity-100 hover:bg-[#444] p-0.5 transition-opacity"
+                    className="ml-1 opacity-0 group-hover:opacity-100 focus:opacity-100 hover:bg-[#444] p-0.5 transition-opacity outline-none"
+                    aria-label={`Close ${tab.type === "logs" ? "logs" : tab.title} tab`}
                   >
                     <TabCloseIcon className="h-3 w-3" />
-                  </span>
+                  </button>
                 </button>
               ))}
 
@@ -782,9 +792,8 @@ export function LogTerminal({ isOpen, onClose, request }: LogTerminalProps) {
             <button
               type="button"
               onClick={() => setIsMaximized(!isMaximized)}
-              className="flex h-8 w-8 items-center justify-center text-text-muted transition-all hover:bg-[#333] hover:text-white"
+              className={`flex h-8 w-8 items-center justify-center text-text-muted transition-all hover:bg-[#333] hover:text-white ${isMaximized ? '' : 'hidden lg:flex'}`}
               title={isMaximized ? "Restore" : "Maximize Panel Size"}
-              className="flex h-8 w-8 items-center justify-center text-text-muted transition-all hover:bg-[#333] hover:text-white hidden lg:flex"
             >
               {isMaximized ? <MinimizeIcon className="h-3.5 w-3.5" /> : <MaximizeIcon className="h-3.5 w-3.5" />}
             </button>

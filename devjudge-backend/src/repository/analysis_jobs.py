@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from typing import cast, Any
 import uuid
@@ -62,11 +63,12 @@ class AnalysisJobsRepository:
     table_name = "analysis_jobs"
 
     def update_meta(self, job_id: str, meta: dict[str, Any]) -> None:
-        current_job = self.get_job(job_id)
-        existing_meta = _coerce_meta(current_job.meta if current_job else {})
-        merged_meta = _merge_meta(existing_meta, meta)
-
         if get_database_provider() == "supabase":
+            # PostgREST does not support atomic JSONB merges directly via PATCH.
+            # We maintain the Read-Modify-Write pattern for this specific provider.
+            current_job = self.get_job(job_id)
+            existing_meta = _coerce_meta(current_job.meta if current_job else {})
+            merged_meta = _merge_meta(existing_meta, meta)
             supabase_request(
                 "PATCH",
                 f"/{self.table_name}",
@@ -75,15 +77,17 @@ class AnalysisJobsRepository:
             )
             return
 
+        # PostgreSQL: Use the concatenation operator (||) for an atomic top-level merge.
+        # This prevents race conditions inherent in the Read-Modify-Write pattern.
         query = """
             UPDATE analysis_jobs
-            SET meta = %(meta)s
+            SET meta = COALESCE(meta, '{}'::jsonb) || %(meta)s
             WHERE job_id = %(job_id)s
         """
 
         with get_postgres_connection() as connection:
             with connection.cursor() as cursor:
-                cursor.execute(query, {"job_id": job_id, "meta": merged_meta})
+                cursor.execute(query, {"job_id": job_id, "meta": json.dumps(meta)})
             connection.commit()
 
     def append_log_event(self, job_id: str, event: dict[str, Any], *, limit: int = 500) -> None:
@@ -99,7 +103,7 @@ class AnalysisJobsRepository:
             
         # Ensure basic fields exist for frontend compatibility
         log_entry = {
-            "id": event.get("id", len(logs) + 1),
+            "id": event.get("id", uuid.uuid4().hex),
             "job_id": job_id,
             "timestamp": event.get("timestamp", datetime.now(timezone.utc).isoformat()),
             **event
