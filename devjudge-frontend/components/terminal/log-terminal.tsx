@@ -94,13 +94,13 @@ function getPromptLabel(jobId: string | null, mode: "idle" | "saved" | "live") {
   return `devjudge${mode === "live" ? "~live" : mode === "saved" ? "~logs" : ""}${suffix}`;
 }
 
-function getSavedLogs(job: JobSummary | null): JobLogEvent[] {
+function getSavedLogs(job: JobSummary | null): any[] {
   const rawLogs = job?.meta?.logs;
   if (!Array.isArray(rawLogs)) {
     return [];
   }
 
-  return rawLogs.filter((item): item is JobLogEvent => {
+  return rawLogs.filter((item): item is any => {
     return (
       typeof item === "object" &&
       item !== null &&

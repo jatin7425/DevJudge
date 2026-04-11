@@ -33,13 +33,13 @@ function getStatusTone(status: string) {
   return "accent" as const;
 }
 
-function getJobLogs(job: JobSummary | null): JobLogEvent[] {
+function getJobLogs(job: JobSummary | null): any[] {
   const rawLogs = job?.meta?.logs;
   if (!Array.isArray(rawLogs)) {
     return [];
   }
 
-  return rawLogs.filter((item): item is JobLogEvent => {
+  return rawLogs.filter((item): item is any => {
     return (
       typeof item === "object" &&
       item !== null &&
