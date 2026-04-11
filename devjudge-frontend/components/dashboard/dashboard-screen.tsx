@@ -1,11 +1,18 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useRef, useState } from "react";
+import type { ReactNode } from "react";
+import { useEffect, useState } from "react";
 
+import {
+  AlertIcon,
+  DashboardPanel,
+  PlayIcon,
+  StatusPill,
+  TerminalIcon,
+} from "@/components/dashboard/dashboard-frame";
+import { useTerminalController } from "@/components/terminal/terminal-context";
 import { getGitHubSignInUrl, getLogoutUrl } from "@/lib/auth-backend";
-import { AppNav } from "@/components/navigation/app-nav";
-import { PageHeader } from "@/components/navigation/page-header";
 import {
   type DashboardState,
   type JobSummary,
@@ -15,284 +22,141 @@ import {
   startInitialAnalysis,
 } from "@/lib/dashboard-api";
 
-type DashboardScreenState =
+type ScreenState =
   | { status: "loading" }
   | { status: "unauthenticated" }
   | { status: "missing" }
   | { status: "error" }
   | { status: "ready"; dashboard: DashboardState };
 
-type PipelineEvent = {
-  id: number;
-  job_id: string;
-  message: string;
-  progress?: number | null;
-  status?: string | null;
-  timestamp: string;
+type ActiveRun = {
+  jobId: string;
+  status: string;
+  streamUrl: string;
 };
 
-type StepState = {
-  key?: string;
-  label?: string;
-  status?: string;
-  updated_at?: string;
-  error?: string;
+function getStatusTone(status: string | null | undefined) {
+  if (!status) return "default" as const;
+  const value = status.toLowerCase();
+  if (value === "completed" || value === "success") return "success" as const;
+  if (value === "failed" || value === "error") return "danger" as const;
+  if (value === "running" || value === "queued") return "warning" as const;
+  return "accent" as const;
+}
+
+type DashboardScreenProps = {
+  setPageMetadata: (metadata: { eyebrow: string; title: string; actions?: ReactNode }) => void;
 };
 
-function getInitials(username: string, displayName: string | null): string {
-  const source = displayName?.trim() || username.trim();
-  return source.slice(0, 2).toUpperCase();
-}
-
-function DashboardStatusCard({ dashboard }: { dashboard: DashboardState }) {
-  const statusLabel = dashboard.analysisRequested
-    ? "Analysis running"
-    : dashboard.hasInitialData
-      ? "Latest result available"
-      : "Needs first analysis";
-
-  const statusTone = dashboard.analysisRequested
-    ? "text-warning"
-    : dashboard.hasInitialData
-      ? "text-success"
-      : "text-accent-primary";
-
-  return (
-    <div className="rounded-[1.5rem] border border-border-default bg-bg-secondary p-6">
-      <p className="text-[11px] uppercase tracking-[0.24em] text-text-muted">
-        Status
-      </p>
-      <p className={`mt-4 text-2xl [font-family:var(--font-syne)] ${statusTone}`}>
-        {statusLabel}
-      </p>
-      <p className="mt-3 max-w-lg text-sm leading-7 text-text-subtle">
-        {dashboard.analysisRequested
-          ? "The pipeline is processing now. Open logs sidebar to watch each step in real time."
-          : dashboard.hasInitialData
-            ? "A successful run exists for this account. You can trigger a fresh run any time."
-            : "DevJudge has the account, but it still needs the first GitHub data pull before scoring can start."}
-      </p>
-    </div>
-  );
-}
-
-export function DashboardScreen() {
-  const [screenState, setScreenState] = useState<DashboardScreenState>({
-    status: "loading",
-  });
+export function DashboardScreen({ setPageMetadata }: DashboardScreenProps) {
+  const { openTerminal, openTerminalWithStartedAnalysis } = useTerminalController();
+  const [screenState, setScreenState] = useState<ScreenState>({ status: "loading" });
+  const [latestSuccessfulJob, setLatestSuccessfulJob] = useState<JobSummary | null>(null);
+  const [activeRun, setActiveRun] = useState<ActiveRun | null>(null);
   const [isStartingAnalysis, setIsStartingAnalysis] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
-  const [analysisJobId, setAnalysisJobId] = useState<string | null>(null);
-  const [analysisStatus, setAnalysisStatus] = useState<string>("idle");
-  const [analysisProgress, setAnalysisProgress] = useState<number>(0);
-  const [analysisLogs, setAnalysisLogs] = useState<PipelineEvent[]>([]);
-  const [analysisSteps, setAnalysisSteps] = useState<Record<string, StepState>>({});
-  const [latestSuccessfulJob, setLatestSuccessfulJob] = useState<JobSummary | null>(null);
-  const [isLogSidebarOpen, setIsLogSidebarOpen] = useState(true);
-  const [isStreamConnected, setIsStreamConnected] = useState(false);
-  const streamRef = useRef<EventSource | null>(null);
   const signInHref = getGitHubSignInUrl();
   const logoutHref = getLogoutUrl();
   const isJobActive =
-    Boolean(analysisJobId) &&
-    analysisStatus !== "completed" &&
-    analysisStatus !== "failed";
+    Boolean(activeRun?.jobId) &&
+    activeRun?.status !== "completed" &&
+    activeRun?.status !== "failed";
 
-  const closeStream = useCallback(() => {
-    if (streamRef.current) {
-      streamRef.current.close();
-      streamRef.current = null;
+  useEffect(() => {
+    setPageMetadata({
+      eyebrow: "Overview",
+      title: "Run analysis, then read the report",
+      actions: (
+        <>
+          <button
+            type="button"
+            onClick={openTerminal}
+            className="rounded-full border border-border-accent bg-accent-subtle px-4 py-2 text-xs font-bold uppercase tracking-[0.18em] text-accent-primary transition-colors hover:bg-bg-tertiary"
+          >
+            Open Terminal
+          </button>
+          <a
+            href={logoutHref}
+            className="rounded-full border border-border-muted px-4 py-2 text-xs uppercase tracking-[0.18em] text-text-secondary transition-colors hover:border-border-accent hover:text-text-primary"
+          >
+            Logout
+          </a>
+        </>
+      ),
+    });
+  }, [logoutHref, openTerminal, setPageMetadata]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function load() {
+      try {
+        const dashboardResult = await fetchDashboardState();
+        if (!mounted) return;
+
+        if (dashboardResult.kind === "authenticated") {
+          setScreenState({ status: "ready", dashboard: dashboardResult.dashboard });
+          const [latest, active] = await Promise.all([
+            fetchLatestSuccessfulJob(),
+            dashboardResult.dashboard.analysisRequested ? fetchActiveAnalysis() : Promise.resolve({ kind: "none" as const }),
+          ]);
+
+          if (!mounted) return;
+          setLatestSuccessfulJob(latest);
+          if (active.kind === "started") {
+            setActiveRun({
+              jobId: active.jobId,
+              status: active.status,
+              streamUrl: active.streamUrl,
+            });
+          } else {
+            setActiveRun(null);
+          }
+          return;
+        }
+
+        setScreenState({ status: dashboardResult.kind });
+      } catch {
+        if (mounted) setScreenState({ status: "error" });
+      }
     }
-    setIsStreamConnected(false);
+
+    void load();
+    return () => {
+      mounted = false;
+    };
   }, []);
 
-  const connectAnalysisStream = useCallback((streamUrl: string) => {
-    closeStream();
-
-    const source = new EventSource(streamUrl, { withCredentials: true });
-    streamRef.current = source;
-
-    source.onopen = () => {
-      setIsStreamConnected(true);
-    };
-
-    source.addEventListener("job-update", (event) => {
-      const messageEvent = event as MessageEvent;
-      try {
-        const payload = JSON.parse(messageEvent.data) as PipelineEvent;
-        setAnalysisLogs((current) => {
-          const byId = new Map<number, PipelineEvent>();
-          for (const entry of current) {
-            byId.set(entry.id, entry);
-          }
-          byId.set(payload.id, payload);
-          return Array.from(byId.values())
-            .sort((left, right) => left.id - right.id)
-            .slice(-80);
-        });
-
-        if (typeof payload.progress === "number") {
-          setAnalysisProgress(Math.max(0, Math.min(100, payload.progress)));
-        }
-
-        if (payload.status) {
-          setAnalysisStatus(payload.status);
-        }
-
-        if (payload.message.startsWith("Current Step: ")) {
-          const label = payload.message.replace("Current Step: ", "");
-          setAnalysisSteps((prev) => {
-            const next = { ...prev };
-            const key = label.toLowerCase().replace(/\s+/g, "_");
-            next[key] = {
-              ...(next[key] ?? {}),
-              key,
-              label,
-              status: "running",
-              updated_at: payload.timestamp,
-            };
-            return next;
-          });
-        }
-
-        if (payload.status === "completed" || payload.status === "failed" || payload.progress === 100) {
-          closeStream();
-        }
-      } catch {
-        // Ignore malformed event payloads.
-      }
-    });
-
-    source.onerror = () => {
-      // EventSource auto-reconnects; keep the UI stable instead of flickering.
-    };
-  }, [closeStream]);
-
-  const applyStartedAnalysis = useCallback((
-    result: {
-      jobId: string;
-      status: string;
-      streamUrl: string;
-      steps?: Record<string, unknown>;
-    },
-    clearLogs: boolean,
-  ) => {
-    setAnalysisJobId(result.jobId);
-    setAnalysisStatus(result.status);
-    setAnalysisProgress(result.status === "queued" ? 5 : 10);
-    setIsLogSidebarOpen(true);
-    if (clearLogs) {
-      setAnalysisLogs([]);
-    }
-    const stepEntries = (result.steps ?? {}) as Record<string, StepState>;
-    setAnalysisSteps(stepEntries);
-    connectAnalysisStream(result.streamUrl);
-  }, [connectAnalysisStream]);
-
-  useEffect(() => {
-    if (!isJobActive) {
-      setIsLogSidebarOpen(false);
-    }
-  }, [isJobActive]);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    async function loadDashboard() {
-      try {
-        const result = await fetchDashboardState();
-
-        if (!isMounted) {
-          return;
-        }
-
-        if (result.kind === "authenticated") {
-          setScreenState({
-            status: "ready",
-            dashboard: result.dashboard,
-          });
-
-          const latestSuccessful = await fetchLatestSuccessfulJob();
-          if (!isMounted) {
-            return;
-          }
-          setLatestSuccessfulJob(latestSuccessful);
-
-          if (result.dashboard.analysisRequested) {
-            const activeAnalysis = await fetchActiveAnalysis();
-            if (!isMounted) {
-              return;
-            }
-
-            if (activeAnalysis.kind === "started") {
-              applyStartedAnalysis(activeAnalysis, true);
-            } else if (activeAnalysis.kind === "unauthenticated") {
-              setScreenState({ status: "unauthenticated" });
-            }
-          }
-          return;
-        }
-
-        if (result.kind === "unauthenticated") {
-          setScreenState({ status: "unauthenticated" });
-          return;
-        }
-
-        setScreenState({ status: "missing" });
-      } catch {
-        if (isMounted) {
-          setScreenState({ status: "error" });
-        }
-      }
-    }
-
-    void loadDashboard();
-
-    return () => {
-      isMounted = false;
-      closeStream();
-    };
-  }, [applyStartedAnalysis, closeStream]);
-
   async function handleStartAnalysis() {
-    if (screenState.status !== "ready") {
-      return;
-    }
-
-    if (isJobActive) {
-      return;
-    }
+    if (screenState.status !== "ready" || isStartingAnalysis) return;
 
     setActionError(null);
     setIsStartingAnalysis(true);
 
     try {
-      const result = await startInitialAnalysis();
-
-      if (result.kind === "started") {
-        applyStartedAnalysis(result, true);
-
-        setScreenState((current) => {
-          if (current.status !== "ready") {
-            return current;
-          }
-
-          return {
-            status: "ready",
-            dashboard: {
-              ...current.dashboard,
-              analysisRequested: true,
-            },
-          };
+      const started = await startInitialAnalysis();
+      if (started.kind === "started") {
+        setActiveRun({
+          jobId: started.jobId,
+          status: started.status,
+          streamUrl: started.streamUrl,
         });
-        return;
+        setScreenState((current) =>
+          current.status === "ready"
+            ? {
+                status: "ready",
+                dashboard: { ...current.dashboard, analysisRequested: true },
+              }
+            : current,
+        );
+        openTerminalWithStartedAnalysis({
+          jobId: started.jobId,
+          status: started.status,
+          streamUrl: started.streamUrl,
+        });
+      } else {
+        setScreenState({ status: started.kind });
       }
-
-      if (result.kind === "unauthenticated") {
-        setScreenState({ status: "unauthenticated" });
-        return;
-      }
-      setScreenState({ status: "missing" });
     } catch {
       setActionError("Could not start analysis right now. Try again.");
     } finally {
@@ -301,528 +165,165 @@ export function DashboardScreen() {
   }
 
   return (
-    <main className="relative isolate min-h-[100dvh] overflow-hidden bg-bg-primary">
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(88,166,255,0.16),transparent_32%),radial-gradient(circle_at_bottom_right,rgba(188,140,255,0.12),transparent_28%)]" />
-
-      <section className="relative flex min-h-[100dvh] w-full flex-col border border-border-default bg-bg-secondary/95 shadow-[0_28px_120px_rgba(0,0,0,0.45)] backdrop-blur">
-        <div className="pointer-events-none absolute inset-0 [background-image:linear-gradient(rgba(255,255,255,0.025)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.025)_1px,transparent_1px)] [background-size:32px_32px] sm:[background-size:44px_44px]" />
-
-        <PageHeader
-          eyebrow="DevJudge"
-          title="Dashboard"
-          actions={(
-            <>
-              <AppNav />
-              <a
-                href={logoutHref}
-                className="rounded-full border border-border-muted px-4 py-2 text-xs uppercase tracking-[0.18em] text-text-secondary transition-colors hover:border-border-accent hover:text-text-primary"
-              >
-                Logout
-              </a>
-            </>
-          )}
-        />
-
-        <div className="relative flex flex-1 flex-col px-5 py-5 sm:px-8 sm:py-8">
-          {screenState.status === "loading" ? (
-            <div className="grid flex-1 gap-5 lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)]">
-              <div className="rounded-[1.5rem] border border-border-default bg-bg-primary/70 p-6" />
-              <div className="space-y-5">
-                <div className="h-44 rounded-[1.5rem] border border-border-default bg-bg-primary/70" />
-                <div className="h-56 rounded-[1.5rem] border border-border-default bg-bg-primary/70" />
-              </div>
-            </div>
-          ) : null}
-
-          {screenState.status === "unauthenticated" ? (
-            <div className="mx-auto flex w-full max-w-2xl flex-1 items-center justify-center">
-              <div className="w-full rounded-[1.5rem] border border-border-default bg-bg-primary p-8 text-center">
-                <p className="text-[11px] uppercase tracking-[0.24em] text-text-muted">
-                  Session required
-                </p>
-                <h2 className="mt-4 text-3xl text-text-primary [font-family:var(--font-syne)]">
-                  Sign in to open your dashboard
-                </h2>
-                <p className="mt-4 text-sm leading-7 text-text-subtle">
-                  Your dashboard is backed by the Azure Functions auth session.
-                  Login with GitHub again to continue.
-                </p>
-                <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:justify-center">
-                  <a
-                    href={signInHref}
-                    className="rounded-xl bg-btn-primary px-5 py-3 text-sm font-bold text-bg-primary transition-transform hover:-translate-y-0.5 [font-family:var(--font-syne)]"
-                  >
-                    Continue with GitHub
-                  </a>
-                  <Link
-                    href="/"
-                    className="rounded-xl border border-border-muted px-5 py-3 text-sm font-medium text-text-secondary transition-colors hover:border-border-accent hover:text-text-primary"
-                  >
-                    Back to home
-                  </Link>
-                </div>
-              </div>
-            </div>
-          ) : null}
-
-          {screenState.status === "missing" ? (
-            <div className="mx-auto flex w-full max-w-2xl flex-1 items-center justify-center">
-              <div className="w-full rounded-[1.5rem] border border-danger/40 bg-bg-primary p-8 text-center">
-                <p className="text-[11px] uppercase tracking-[0.24em] text-danger">
-                  Profile missing
-                </p>
-                <h2 className="mt-4 text-3xl text-text-primary [font-family:var(--font-syne)]">
-                  User record was not found
-                </h2>
-                <p className="mt-4 text-sm leading-7 text-text-subtle">
-                  The session is present, but the persisted dashboard profile is
-                  missing. Sign in again to recreate it.
-                </p>
-                <a
-                  href={signInHref}
-                  className="mt-8 inline-flex rounded-xl bg-btn-primary px-5 py-3 text-sm font-bold text-bg-primary transition-transform hover:-translate-y-0.5 [font-family:var(--font-syne)]"
-                >
-                  Reconnect GitHub
-                </a>
-              </div>
-            </div>
-          ) : null}
-
-          {screenState.status === "error" ? (
-            <div className="mx-auto flex w-full max-w-2xl flex-1 items-center justify-center">
-              <div className="w-full rounded-[1.5rem] border border-warning/40 bg-bg-primary p-8 text-center">
-                <p className="text-[11px] uppercase tracking-[0.24em] text-warning">
-                  Dashboard unavailable
-                </p>
-                <h2 className="mt-4 text-3xl text-text-primary [font-family:var(--font-syne)]">
-                  Could not load the current state
-                </h2>
-                <p className="mt-4 text-sm leading-7 text-text-subtle">
-                  Check that the Azure Functions backend is running and that the
-                  browser can reach it from this page.
-                </p>
-              </div>
-            </div>
-          ) : null}
-
-          {screenState.status === "ready" ? (
-            <div className="grid flex-1 gap-5 lg:grid-cols-[minmax(0,24rem)_minmax(0,1fr)]">
-              <aside className="rounded-[1.5rem] border border-border-default bg-bg-primary p-6">
-                <div className="flex items-center gap-4">
-                  {screenState.dashboard.avatarUrl ? (
-                    <img
-                      src={screenState.dashboard.avatarUrl}
-                      alt={screenState.dashboard.username}
-                      className="h-16 w-16 rounded-2xl border border-border-muted object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-16 w-16 items-center justify-center rounded-2xl border border-border-muted bg-bg-secondary text-lg font-bold text-text-primary [font-family:var(--font-syne)]">
-                      {getInitials(
-                        screenState.dashboard.username,
-                        screenState.dashboard.displayName,
-                      )}
-                    </div>
-                  )}
-
-                  <div className="min-w-0">
-                    <p className="truncate text-xl text-text-primary [font-family:var(--font-syne)]">
-                      {screenState.dashboard.displayName ??
-                        screenState.dashboard.username}
-                    </p>
-                    <p className="mt-1 truncate text-sm text-text-subtle">
-                      @{screenState.dashboard.username}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="mt-6 space-y-4">
-                  <div className="rounded-2xl border border-border-default bg-bg-secondary px-4 py-4">
-                    <p className="text-[11px] uppercase tracking-[0.22em] text-text-muted">
-                      Snapshot
-                    </p>
-                    <p className="mt-3 text-sm leading-7 text-text-secondary">
-                      This screen checks whether DevJudge already has the first
-                      repository snapshot for your account.
-                    </p>
-                  </div>
-
-                  {isJobActive ? (
-                    <button
-                      type="button"
-                      onClick={() => setIsLogSidebarOpen((value) => !value)}
-                      className="rounded-xl border border-border-default bg-bg-secondary px-4 py-3 text-sm text-text-secondary hover:text-text-primary"
-                    >
-                      {isLogSidebarOpen ? "Hide Live Logs" : "Open Live Logs"}
-                    </button>
-                  ) : null}
-                </div>
-              </aside>
-
-              <div className="flex flex-col gap-5">
-                <DashboardStatusCard dashboard={screenState.dashboard} />
-
-                {!screenState.dashboard.hasInitialData ? (
-                  <div className="rounded-[1.5rem] border border-border-default bg-bg-primary p-6 sm:p-8">
-                    <p className="text-[11px] uppercase tracking-[0.24em] text-text-muted">
-                      Initial analysis
-                    </p>
-                    <h2 className="mt-4 text-3xl text-text-primary [font-family:var(--font-syne)] sm:text-4xl">
-                      Start the first GitHub scan
-                    </h2>
-                    <p className="mt-4 max-w-2xl text-sm leading-7 text-text-subtle sm:text-base">
-                      DevJudge already knows who this user is. It still needs
-                      the first pass over repositories, contribution patterns,
-                      and profile metadata before the scoring dashboard can
-                      render real output.
-                    </p>
-
-                    <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
-                      <button
-                        type="button"
-                        onClick={handleStartAnalysis}
-                        disabled={isStartingAnalysis || isJobActive}
-                        className="rounded-xl bg-btn-primary px-6 py-4 text-base font-bold text-bg-primary transition-transform disabled:cursor-not-allowed disabled:opacity-70 sm:w-auto [font-family:var(--font-syne)] cursor-pointer"
-                      >
-                        {isJobActive
-                          ? "Analysis running"
-                          : isStartingAnalysis
-                            ? "Starting analysis..."
-                            : latestSuccessfulJob
-                              ? "Run New Analysis"
-                              : "Start Analysis"}
-                      </button>
-
-                      <p className="text-sm leading-7 text-text-muted">
-                        {screenState.dashboard.analysisRequested
-                          ? "Analysis is in progress. Open Live Logs from sidebar."
-                          : latestSuccessfulJob
-                            ? "Trigger a fresh run to compare with your previous result."
-                            : "Click start to queue analysis and begin live pipeline tracking."}
-                      </p>
-                    </div>
-
-                    {actionError ? (
-                      <p className="mt-4 text-sm text-danger">{actionError}</p>
-                    ) : null}
-
-                    {analysisJobId ? (
-                      <div className="mt-6 rounded-2xl border border-border-default bg-bg-secondary p-4">
-                        <div className="flex flex-wrap items-center justify-between gap-3">
-                          <p className="text-xs uppercase tracking-[0.18em] text-text-muted">
-                            Pipeline progress
-                          </p>
-                          <p className="text-sm text-text-secondary">
-                            {analysisProgress}% {isStreamConnected ? "• live" : "• reconnecting"}
-                          </p>
-                        </div>
-
-                        <div className="mt-3 h-2 w-full overflow-hidden rounded-full bg-bg-primary">
-                          <div
-                            className="h-full rounded-full bg-btn-primary transition-all duration-300"
-                            style={{ width: `${analysisProgress}%` }}
-                          />
-                        </div>
-
-                        <p className="mt-3 text-sm text-text-subtle">
-                          Job: {analysisJobId} • Status: {analysisStatus}
-                        </p>
-
-                        <div className="mt-3 rounded-xl border border-border-default bg-bg-primary px-3 py-3">
-                          <p className="text-xs uppercase tracking-[0.18em] text-text-muted">
-                            Pipeline Progress
-                          </p>
-                          <pre className="mt-2 overflow-x-auto text-sm text-text-secondary [font-family:var(--font-dm-mono)]">
-{`[${"█".repeat(Math.round(analysisProgress / 5)).padEnd(20, "░")}] ${analysisProgress}%
-Current Step: ${
-  Object.values(analysisSteps).find((step) => step.status === "running")?.label ?? "Waiting for worker..."
-}`}
-                          </pre>
-                        </div>
-
-                        {Object.keys(analysisSteps).length > 0 ? (
-                          <div className="mt-3 rounded-xl border border-border-default bg-bg-primary px-3 py-3">
-                            <p className="text-xs uppercase tracking-[0.18em] text-text-muted">
-                              Step Status
-                            </p>
-                            <ul className="mt-2 space-y-1 text-sm text-text-secondary">
-                              {Object.entries(analysisSteps).map(([key, step]) => (
-                                <li key={key}>
-                                  {(step.status === "success" && "✔") ||
-                                    (step.status === "failed" && "✖") ||
-                                    (step.status === "running" && "→") ||
-                                    "•"}{" "}
-                                  {step.label ?? key} ({step.status ?? "pending"})
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        ) : null}
-
-                        <div className="mt-3">
-                          <Link
-                            href="/dashboard/jobs"
-                            className="text-sm text-text-secondary underline hover:text-text-primary"
-                          >
-                            View all jobs and results
-                          </Link>
-                        </div>
-                      </div>
-                    ) : null}
-                  </div>
-                ) : (
-                  <div className="rounded-[1.5rem] border border-border-default bg-bg-primary p-6 sm:p-8">
-                    <p className="text-[11px] uppercase tracking-[0.24em] text-text-muted">
-                      Analysis
-                    </p>
-                    <h2 className="mt-4 text-3xl text-text-primary [font-family:var(--font-syne)] sm:text-4xl">
-                      Latest analysis result
-                    </h2>
-                    {latestSuccessfulJob?.result ? (
-                      <div className="mt-4 space-y-4">
-                        <p className="text-sm leading-7 text-text-subtle sm:text-base">
-                          Showing your latest successful run. Open jobs page for full history.
-                        </p>
-                        {(() => {
-                          const result = latestSuccessfulJob.result as {
-                            repos?: {
-                              total_forks?: number;
-                              total_repos?: number;
-                              total_stars?: number;
-                              forked_repos?: number;
-                              original_repos?: number;
-                              repos_with_readme?: number;
-                              repos_with_description?: number;
-                            };
-                            score?: {
-                              total_score?: number;
-                              max_score?: number;
-                              label?: string;
-                              breakdown?: Record<string, { score?: number; max?: number; label?: string }>;
-                            };
-                            profile?: {
-                              stats?: {
-                                followers?: number;
-                                public_repos?: number;
-                                total_fields?: number;
-                                account_age_days?: number;
-                                completed_fields?: number;
-                                user_experience_level?: string;
-                                user_experience_description?: string;
-                              };
-                              has_bio?: boolean;
-                              has_blog?: boolean;
-                              has_name?: boolean;
-                              has_avatar?: boolean;
-                              has_location?: boolean;
-                            };
-                            events?: {
-                              total_active_days?: number;
-                              current_streak_days?: number;
-                              longest_streak_days?: number;
-                            };
-                            languages?: {
-                              primary_language?: string;
-                              unique_languages?: number;
-                              language_percentages?: Record<string, number>;
-                            };
-                            contributions?: {
-                              total_merged_prs?: number;
-                              external_merged_prs?: number;
-                            };
-                            commit_activity?: {
-                              active_repos?: number;
-                              total_commits?: number;
-                              avg_commits_per_repo?: number;
-                            };
-                          };
-
-                          const breakdown = result.score?.breakdown ?? {};
-                          const languagePercentages = Object.entries(result.languages?.language_percentages ?? {})
-                            .sort((left, right) => right[1] - left[1])
-                            .slice(0, 6);
-
-                          const profileChecks = [
-                            ["Avatar", result.profile?.has_avatar],
-                            ["Name", result.profile?.has_name],
-                            ["Bio", result.profile?.has_bio],
-                            ["Location", result.profile?.has_location],
-                            ["Blog", result.profile?.has_blog],
-                          ] as const;
-
-                          return (
-                            <>
-                              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                                <div className="rounded-xl border border-border-default bg-bg-secondary p-4 lg:col-span-2">
-                                  <p className="text-[11px] uppercase tracking-[0.2em] text-text-muted">DevJudge Score</p>
-                                  <p className="mt-2 text-4xl text-text-primary [font-family:var(--font-syne)]">
-                                    {result.score?.total_score ?? 0}
-                                    <span className="ml-2 text-lg text-text-muted">/ {result.score?.max_score ?? 100}</span>
-                                  </p>
-                                  <p className="mt-2 text-sm text-text-secondary">{result.score?.label ?? "Unlabeled"}</p>
-                                </div>
-                                <div className="rounded-xl border border-border-default bg-bg-secondary p-4">
-                                  <p className="text-[11px] uppercase tracking-[0.2em] text-text-muted">Repositories</p>
-                                  <p className="mt-2 text-3xl text-text-primary [font-family:var(--font-syne)]">{result.repos?.total_repos ?? 0}</p>
-                                  <p className="mt-1 text-xs text-text-muted">
-                                    READMEs: {result.repos?.repos_with_readme ?? 0} • Descriptions: {result.repos?.repos_with_description ?? 0}
-                                  </p>
-                                </div>
-                                <div className="rounded-xl border border-border-default bg-bg-secondary p-4">
-                                  <p className="text-[11px] uppercase tracking-[0.2em] text-text-muted">Primary Language</p>
-                                  <p className="mt-2 text-2xl text-text-primary [font-family:var(--font-syne)]">
-                                    {result.languages?.primary_language ?? "-"}
-                                  </p>
-                                  <p className="mt-1 text-xs text-text-muted">Unique: {result.languages?.unique_languages ?? 0}</p>
-                                </div>
-                              </div>
-
-                              <div className="grid gap-3 lg:grid-cols-2">
-                                <div className="rounded-xl border border-border-default bg-bg-secondary p-4">
-                                  <p className="text-[11px] uppercase tracking-[0.18em] text-text-muted">Score Breakdown</p>
-                                  <div className="mt-3 space-y-3">
-                                    {Object.entries(breakdown).map(([key, value]) => {
-                                      const score = value.score ?? 0;
-                                      const max = Math.max(1, value.max ?? 1);
-                                      const width = Math.min(100, Math.round((score / max) * 100));
-                                      return (
-                                        <div key={key}>
-                                          <div className="flex items-center justify-between text-xs text-text-secondary">
-                                            <span className="uppercase tracking-[0.12em]">{key.replaceAll("_", " ")}</span>
-                                            <span>{score}/{max}</span>
-                                          </div>
-                                          <div className="mt-1 h-2 overflow-hidden rounded-full bg-bg-primary">
-                                            <div className="h-full bg-btn-primary" style={{ width: `${width}%` }} />
-                                          </div>
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                </div>
-
-                                <div className="rounded-xl border border-border-default bg-bg-secondary p-4">
-                                  <p className="text-[11px] uppercase tracking-[0.18em] text-text-muted">Language Distribution</p>
-                                  <div className="mt-3 space-y-3">
-                                    {languagePercentages.map(([language, percent]) => (
-                                      <div key={language}>
-                                        <div className="flex items-center justify-between text-xs text-text-secondary">
-                                          <span className="uppercase tracking-[0.12em]">{language}</span>
-                                          <span>{percent.toFixed(2)}%</span>
-                                        </div>
-                                        <div className="mt-1 h-2 overflow-hidden rounded-full bg-bg-primary">
-                                          <div className="h-full bg-success" style={{ width: `${Math.min(100, percent)}%` }} />
-                                        </div>
-                                      </div>
-                                    ))}
-                                  </div>
-                                </div>
-                              </div>
-
-                              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                                <div className="rounded-xl border border-border-default bg-bg-secondary p-4">
-                                  <p className="text-[11px] uppercase tracking-[0.18em] text-text-muted">Commit Activity</p>
-                                  <p className="mt-2 text-2xl text-text-primary [font-family:var(--font-syne)]">{result.commit_activity?.total_commits ?? 0}</p>
-                                  <p className="text-xs text-text-muted">
-                                    Active repos: {result.commit_activity?.active_repos ?? 0} • Avg/repo: {result.commit_activity?.avg_commits_per_repo ?? 0}
-                                  </p>
-                                </div>
-                                <div className="rounded-xl border border-border-default bg-bg-secondary p-4">
-                                  <p className="text-[11px] uppercase tracking-[0.18em] text-text-muted">Contributions</p>
-                                  <p className="mt-2 text-2xl text-text-primary [font-family:var(--font-syne)]">{result.contributions?.total_merged_prs ?? 0}</p>
-                                  <p className="text-xs text-text-muted">
-                                    External merged PRs: {result.contributions?.external_merged_prs ?? 0}
-                                  </p>
-                                </div>
-                                <div className="rounded-xl border border-border-default bg-bg-secondary p-4">
-                                  <p className="text-[11px] uppercase tracking-[0.18em] text-text-muted">Streak</p>
-                                  <p className="mt-2 text-2xl text-text-primary [font-family:var(--font-syne)]">{result.events?.current_streak_days ?? 0} days</p>
-                                  <p className="text-xs text-text-muted">
-                                    Longest: {result.events?.longest_streak_days ?? 0} • Active days: {result.events?.total_active_days ?? 0}
-                                  </p>
-                                </div>
-                              </div>
-
-                              <div className="rounded-xl border border-border-default bg-bg-secondary p-4">
-                                <p className="text-[11px] uppercase tracking-[0.18em] text-text-muted">Profile Snapshot</p>
-                                <p className="mt-2 text-sm text-text-secondary">
-                                  Experience: {result.profile?.stats?.user_experience_level ?? "-"} ({result.profile?.stats?.user_experience_description ?? "N/A"})
-                                </p>
-                                <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
-                                  {profileChecks.map(([label, enabled]) => (
-                                    <div key={label} className="rounded-lg border border-border-default bg-bg-primary px-3 py-2 text-xs text-text-secondary">
-                                      {(enabled ? "✔" : "○")} {label}
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            </>
-                          );
-                        })()}
-                        <div className="pt-1">
-                          <button
-                            type="button"
-                            onClick={handleStartAnalysis}
-                            disabled={isStartingAnalysis || isJobActive}
-                            className="rounded-xl bg-btn-primary px-5 py-3 text-sm font-bold text-bg-primary transition-transform disabled:cursor-not-allowed disabled:opacity-70 [font-family:var(--font-syne)]"
-                          >
-                            {isStartingAnalysis ? "Starting..." : isJobActive ? "Analysis running" : "Run New Analysis"}
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <p className="mt-4 max-w-2xl text-sm leading-7 text-text-subtle sm:text-base">
-                        Initial data exists but no successful analysis result is available yet.
-                      </p>
-                    )}
-                  </div>
-                )}
-              </div>
-            </div>
-          ) : null}
+    <>
+      {screenState.status === "loading" ? (
+        <div className="space-y-6">
+          <div className="h-80 animate-pulse rounded-[1.6rem] border border-border-default bg-bg-secondary/70" />
+          <div className="h-64 animate-pulse rounded-[1.6rem] border border-border-default bg-bg-secondary/70" />
         </div>
-      </section>
-
-      {isJobActive ? (
-        <aside
-          className={`fixed right-0 top-0 z-40 h-screen w-full max-w-md border-l border-border-default bg-bg-primary/95 p-5 backdrop-blur transition-transform duration-300 ${
-            isLogSidebarOpen ? "translate-x-0" : "translate-x-full"
-          }`}
-        >
-          <div className="flex items-center justify-between">
-            <p className="text-xs uppercase tracking-[0.2em] text-text-muted">Live Logs</p>
-            <button
-              type="button"
-              onClick={() => setIsLogSidebarOpen(false)}
-              className="rounded-lg border border-border-default px-3 py-1 text-xs text-text-secondary hover:text-text-primary"
-            >
-              Close
-            </button>
-          </div>
-
-          <div className="mt-4 rounded-xl border border-border-default bg-bg-secondary p-3">
-            <p className="text-xs uppercase tracking-[0.2em] text-text-muted">Pipeline Progress</p>
-            <pre className="mt-2 overflow-x-auto text-sm text-text-secondary [font-family:var(--font-dm-mono)]">
-{`[${"█".repeat(Math.round(analysisProgress / 5)).padEnd(20, "░")}] ${analysisProgress}%
-Current Step: ${
-  Object.values(analysisSteps).find((step) => step.status === "running")?.label ?? "Waiting for worker..."
-}`}
-            </pre>
-          </div>
-
-          <div className="mt-4 h-[calc(100vh-14rem)] overflow-y-auto rounded-xl border border-border-default bg-bg-secondary p-3">
-            {analysisLogs.length === 0 ? (
-              <p className="text-sm text-text-muted">Waiting for first pipeline log...</p>
-            ) : (
-              <ul className="space-y-1 text-sm text-text-secondary">
-                {analysisLogs.map((log) => (
-                  <li key={log.id}>
-                    [{new Date(log.timestamp).toLocaleTimeString()}] {log.message}
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-        </aside>
       ) : null}
-    </main>
+
+      {screenState.status === "unauthenticated" ? (
+        <DashboardPanel title="Sign in to continue" eyebrow="Session">
+          <p className="max-w-2xl text-sm leading-7 text-text-subtle">
+            Connect GitHub first. After that, this page will let you run analysis in one click.
+          </p>
+          <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+            <a
+              href={signInHref}
+              className="inline-flex items-center justify-center rounded-[1rem] bg-btn-primary px-5 py-3 text-sm font-bold text-bg-primary [font-family:var(--font-syne)]"
+            >
+              Continue with GitHub
+            </a>
+            <Link
+              href="/"
+              className="inline-flex items-center justify-center rounded-[1rem] border border-border-muted px-5 py-3 text-sm text-text-secondary transition-colors hover:border-border-accent hover:text-text-primary"
+            >
+              Back to Home
+            </Link>
+          </div>
+        </DashboardPanel>
+      ) : null}
+
+      {screenState.status === "missing" ? (
+        <DashboardPanel title="Profile record was not found" eyebrow="Session">
+          <p className="text-sm leading-7 text-text-subtle">
+            Reconnect GitHub so DevJudge can recreate the profile record.
+          </p>
+        </DashboardPanel>
+      ) : null}
+
+      {screenState.status === "error" ? (
+        <DashboardPanel title="Dashboard unavailable" eyebrow="Backend">
+          <p className="text-sm leading-7 text-text-subtle">
+            Check that the backend is running, then refresh this page.
+          </p>
+        </DashboardPanel>
+      ) : null}
+
+      {screenState.status === "ready" ? (
+        <div className="space-y-8">
+          <DashboardPanel
+            title={`Welcome, ${screenState.dashboard.displayName ?? screenState.dashboard.username}`}
+            eyebrow="Next Best Action"
+            action={
+              <StatusPill
+                label={isJobActive ? "Terminal Tracking Live Run" : latestSuccessfulJob ? "Report Ready" : "Needs Analysis"}
+                tone={isJobActive ? "warning" : latestSuccessfulJob ? "success" : "accent"}
+              />
+            }
+          >
+            <div className="rounded-2xl border border-border-default bg-bg-secondary p-8">
+              <p className="text-3xl font-bold text-text-primary">
+                {isJobActive
+                  ? "Open the terminal to watch the live pipeline."
+                  : latestSuccessfulJob
+                    ? "Your latest report is ready."
+                    : "Run your first GitHub profile analysis."}
+              </p>
+              <p className="mt-4 max-w-2xl text-base leading-7 text-text-secondary">
+                {isJobActive
+                  ? "All live logs now stream through the terminal. Use the terminal button or shortcut to follow the current run."
+                  : latestSuccessfulJob
+                    ? "Run again to open the terminal and stream a fresh analysis, or open Analytics to review the latest report."
+                    : "Starting a run opens the terminal automatically and streams the worker output there in real time."}
+              </p>
+
+              <div className="mt-8 flex flex-col gap-4 sm:flex-row">
+                <button
+                  type="button"
+                  onClick={handleStartAnalysis}
+                  disabled={isStartingAnalysis}
+                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-accent-primary px-6 py-3 text-base font-semibold text-white transition-all duration-200 hover:bg-accent-hover disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <PlayIcon className="h-4 w-4" />
+                  {isStartingAnalysis ? "Starting..." : latestSuccessfulJob ? "Run Again In Terminal" : "Run Analysis In Terminal"}
+                </button>
+
+                {isJobActive ? (
+                  <button
+                    type="button"
+                    onClick={openTerminal}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl border border-border-accent bg-accent-subtle px-6 py-3 text-base font-semibold text-accent-primary transition-colors duration-200 hover:bg-bg-tertiary hover:border-accent-hover"
+                  >
+                    <TerminalIcon className="h-4 w-4" />
+                    Open Live Terminal
+                  </button>
+                ) : (
+                  <Link
+                    href="/dashboard/analytics"
+                    className="inline-flex items-center justify-center rounded-xl border border-border-accent bg-accent-subtle px-6 py-3 text-base font-semibold text-accent-primary transition-colors duration-200 hover:bg-bg-tertiary hover:border-accent-hover"
+                  >
+                    View Analytics
+                  </Link>
+                )}
+
+                <Link
+                  href="/dashboard/jobs"
+                  className="inline-flex items-center justify-center rounded-xl border border-border-muted px-6 py-3 text-base text-text-secondary transition-colors duration-200 hover:border-border-accent hover:text-text-primary"
+                >
+                  Job History
+                </Link>
+              </div>
+
+              {actionError ? (
+                <div className="mt-6 flex items-start gap-3 rounded-xl border border-danger/40 bg-danger/10 px-5 py-4 text-sm text-danger">
+                  <AlertIcon className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>{actionError}</span>
+                </div>
+              ) : null}
+            </div>
+          </DashboardPanel>
+
+          <div className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(340px,0.9fr)]">
+            <DashboardPanel title="Terminal Workflow" eyebrow="Console-First">
+              <div className="grid gap-6 md:grid-cols-3">
+                {[
+                  ["1", "Run", "Click the terminal run button and DevJudge opens the terminal automatically."],
+                  ["2", "Watch", "Follow live worker output, progress, saved logs, and commands in one place."],
+                  ["3", "Review", "Open Analytics or Jobs once the run completes to inspect the results."],
+                ].map(([step, title, body]) => (
+                  <div key={step} className="rounded-xl border border-border-default bg-bg-secondary p-6">
+                    <p className="text-sm font-medium uppercase tracking-[0.16em] text-accent-primary">Step {step}</p>
+                    <p className="mt-3 text-xl font-bold text-text-primary">{title}</p>
+                    <p className="mt-2 text-sm leading-6 text-text-secondary">{body}</p>
+                  </div>
+                ))}
+              </div>
+            </DashboardPanel>
+
+            <DashboardPanel
+              title="Terminal Commands"
+              eyebrow="Quick Reference"
+              action={<StatusPill label={isJobActive ? activeRun?.status ?? "running" : "idle"} tone={getStatusTone(isJobActive ? activeRun?.status : "idle")} />}
+            >
+              <div className="rounded-xl border border-border-default bg-bg-secondary p-6">
+                <div className="flex items-center gap-2 text-sm uppercase tracking-[0.16em] text-text-muted">
+                  <TerminalIcon className="h-4 w-4 text-accent-primary" />
+                  Commands
+                </div>
+                <ul className="mt-4 space-y-3 text-sm leading-6 text-text-secondary">
+                  <li><span className="text-text-primary">Ctrl+Shift+`</span> opens the terminal anywhere in the dashboard.</li>
+                  <li><span className="text-text-primary">run</span> starts a fresh analysis directly from the terminal.</li>
+                  <li><span className="text-text-primary">active</span> follows the current live run.</li>
+                  <li><span className="text-text-primary">latest</span> opens saved logs for the latest completed run.</li>
+                  <li><span className="text-text-primary">job &lt;id&gt;</span> opens logs for a specific job id.</li>
+                </ul>
+              </div>
+            </DashboardPanel>
+          </div>
+        </div>
+      ) : null}
+    </>
   );
 }

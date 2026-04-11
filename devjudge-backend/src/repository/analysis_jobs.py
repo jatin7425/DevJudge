@@ -1,11 +1,29 @@
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 from typing import cast, Any
 import uuid
 
 from db.connect import get_database_provider, get_postgres_connection, supabase_request
 from db.models import AnalysisJobDbModel, JobStatus
+
+
+def _coerce_meta(value: Any) -> dict[str, Any]:
+    return value if isinstance(value, dict) else {}
+
+
+def _merge_meta(existing: dict[str, Any], incoming: dict[str, Any]) -> dict[str, Any]:
+    merged = dict(existing)
+
+    for key, incoming_value in incoming.items():
+        existing_value = merged.get(key)
+        if isinstance(existing_value, dict) and isinstance(incoming_value, dict):
+            merged[key] = _merge_meta(existing_value, incoming_value)
+        else:
+            merged[key] = incoming_value
+
+    return merged
 
 
 def _parse_timestamp(value: object) -> datetime | None:
@@ -43,6 +61,58 @@ def _build_job_model(row: dict[str, Any]) -> AnalysisJobDbModel:
 
 class AnalysisJobsRepository:
     table_name = "analysis_jobs"
+
+    def update_meta(self, job_id: str, meta: dict[str, Any]) -> None:
+        if get_database_provider() == "supabase":
+            # PostgREST does not support atomic JSONB merges directly via PATCH.
+            # We maintain the Read-Modify-Write pattern for this specific provider.
+            current_job = self.get_job(job_id)
+            existing_meta = _coerce_meta(current_job.meta if current_job else {})
+            merged_meta = _merge_meta(existing_meta, meta)
+            supabase_request(
+                "PATCH",
+                f"/{self.table_name}",
+                query={"job_id": f"eq.{job_id}"},
+                body={"meta": merged_meta},
+            )
+            return
+
+        # PostgreSQL: Use the concatenation operator (||) for an atomic top-level merge.
+        # This prevents race conditions inherent in the Read-Modify-Write pattern.
+        query = """
+            UPDATE analysis_jobs
+            SET meta = COALESCE(meta, '{}'::jsonb) || %(meta)s
+            WHERE job_id = %(job_id)s
+        """
+
+        with get_postgres_connection() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(query, {"job_id": job_id, "meta": json.dumps(meta)})
+            connection.commit()
+
+    def append_log_event(self, job_id: str, event: dict[str, Any], *, limit: int = 500) -> None:
+        # Use a more robust update pattern to avoid race conditions during high-frequency logging
+        current_job = self.get_job(job_id)
+        if not current_job:
+            return
+            
+        meta = _coerce_meta(current_job.meta)
+        logs = meta.get("logs", [])
+        if not isinstance(logs, list):
+            logs = []
+            
+        # Ensure basic fields exist for frontend compatibility
+        log_entry = {
+            "id": event.get("id", uuid.uuid4().hex),
+            "job_id": job_id,
+            "timestamp": event.get("timestamp", datetime.now(timezone.utc).isoformat()),
+            **event
+        }
+        
+        logs.append(log_entry)
+        meta["logs"] = logs[-limit:]
+        meta["last_log_at"] = log_entry["timestamp"]
+        self.update_meta(job_id, meta)
 
     # Create Job
     def create_job(self, user_id: int) -> AnalysisJobDbModel:
@@ -146,7 +216,9 @@ class AnalysisJobsRepository:
             updates["error"] = error
 
         if meta is not None:
-            updates["meta"] = meta
+            current_job = self.get_job(job_id)
+            existing_meta = _coerce_meta(current_job.meta if current_job else {})
+            updates["meta"] = _merge_meta(existing_meta, meta)
 
         if get_database_provider() == "supabase":
             supabase_updates = {

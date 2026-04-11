@@ -1,10 +1,10 @@
 "use client";
 
 import { useState, useCallback, ReactNode } from "react";
-import { DashboardScreen } from "@/components/dashboard/dashboard-screen";
 import { MainLayout } from "@/components/layout/main-layout";
+import { AnalyticsContent } from "@/components/dashboard/analytics-content";
 
-export default function DashboardPage() {
+export default function AnalyticsPage() {
   const [pageMetadata, setPageMetadata] = useState<{
     eyebrow: string;
     title: string;
@@ -24,7 +24,7 @@ export default function DashboardPage() {
       title={pageMetadata.title}
       actions={pageMetadata.actions}
     >
-      <DashboardScreen setPageMetadata={updatePageMetadata} />
+      <AnalyticsContent setPageMetadata={updatePageMetadata} />
     </MainLayout>
   );
 }

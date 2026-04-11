@@ -2,29 +2,30 @@
 @config "../tailwind.config.ts";
 
 :root {
-  --bg-primary: #0d1117;
-  --bg-secondary: #161b22;
-  --bg-tertiary: #21262d;
-  --bg-elevated: #30363d;
+  /* Brand new updated color palette for a modern dark theme */
+  --bg-primary: #0A0A0C; /* Deeper, richer background */
+  --bg-secondary: #1A1A1E; /* Slightly lighter for elements */
+  --bg-tertiary: #28282D; /* For elevated components */
+  --bg-elevated: #3A3A40; /* Stronger elevation */
 
-  --text-primary: #f0f6ff;
-  --text-secondary: #c9d1d9;
-  --text-muted: #8b949e;
-  --text-subtle: #7d8590;
+  --text-primary: #E0E0E3; /* Softer white for primary text */
+  --text-secondary: #B0B0B5; /* Good for secondary info */
+  --text-muted: #7A7A80; /* Muted text for less emphasis */
+  --text-subtle: #5A5A60; /* Very subtle text */
 
-  --accent-primary: #58a6ff;
-  --accent-hover: #388bfd;
-  --accent-subtle: rgba(88, 166, 255, 0.12);
-  --btn-primary: #f0f6ff;
+  --accent-primary: #8C61FF; /* A vibrant, modern purple */
+  --accent-hover: #7347D9; /* Darker purple for hover states */
+  --accent-subtle: rgba(140, 97, 255, 0.15); /* Light, transparent accent */
+  --btn-primary: #E0E0E3; /* Button text color */
 
-  --border-default: #21262d;
-  --border-muted: #30363d;
-  --border-accent: #58a6ff;
+  --border-default: #2D2D33; /* Darker, less obtrusive borders */
+  --border-muted: #3A3A40; /* Subtle border for distinction */
+  --border-accent: #8C61FF; /* Accent-colored borders */
 
-  --success: #3fb950;
-  --warning: #d29922;
-  --danger: #f85149;
-  --purple: #bc8cff;
+  --success: #34D399; /* Softer green */
+  --warning: #FBBF24; /* Clearer amber */
+  --danger: #EF4444; /* Modern red */
+  --purple: #C084FC; /* Brighter purple, distinct from accent */
 
   --background: var(--bg-primary);
   --foreground: var(--text-primary);
@@ -45,4 +46,28 @@ body {
   background: var(--bg-primary);
   color: var(--text-primary);
   font-family: var(--font-geist-sans), sans-serif;
+}
+
+.drawer-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(140, 97, 255, 0.55) rgba(255, 255, 255, 0.04);
+}
+
+.drawer-scrollbar::-webkit-scrollbar {
+  width: 10px;
+}
+
+.drawer-scrollbar::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 999px;
+}
+
+.drawer-scrollbar::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, rgba(140, 97, 255, 0.85), rgba(96, 165, 250, 0.75));
+  border-radius: 999px;
+  border: 2px solid rgba(5, 7, 10, 0.9);
+}
+
+.drawer-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, rgba(160, 120, 255, 0.92), rgba(124, 197, 255, 0.82));
 }

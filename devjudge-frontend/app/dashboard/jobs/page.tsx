@@ -1,23 +1,30 @@
-import { DM_Mono, Syne } from "next/font/google";
+"use client";
 
+import { useState, useCallback, ReactNode } from "react";
 import { JobsScreen } from "@/components/dashboard/jobs-screen";
-
-const syne = Syne({
-  subsets: ["latin"],
-  weight: ["700", "800"],
-  variable: "--font-syne",
-});
-
-const dmMono = DM_Mono({
-  subsets: ["latin"],
-  weight: ["400", "500"],
-  variable: "--font-dm-mono",
-});
+import { MainLayout } from "@/components/layout/main-layout";
 
 export default function JobsPage() {
+  const [pageMetadata, setPageMetadata] = useState<{
+    eyebrow: string;
+    title: string;
+    actions?: ReactNode;
+  }>({
+    eyebrow: "",
+    title: "",
+  });
+
+  const updatePageMetadata = useCallback((metadata: { eyebrow: string; title: string; actions?: ReactNode }) => {
+    setPageMetadata(metadata);
+  }, []);
+
   return (
-    <div className={`${syne.variable} ${dmMono.variable}`}>
-      <JobsScreen />
-    </div>
+    <MainLayout
+      eyebrow={pageMetadata.eyebrow}
+      title={pageMetadata.title}
+      actions={pageMetadata.actions}
+    >
+      <JobsScreen setPageMetadata={updatePageMetadata} />
+    </MainLayout>
   );
 }
