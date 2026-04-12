@@ -281,9 +281,9 @@ function LogTerminalContent({ isOpen, onClose, request }: LogTerminalProps) {
       setCurrentStatus("running");
     };
 
-    source.addEventListener("job-update", (event) => {
+    const handleMessage = (data: string) => {
       try {
-        const payload = JSON.parse((event as MessageEvent).data) as JobLogEvent;
+        const payload = JSON.parse(data) as JobLogEvent;
         const eventKey = `${payload.job_id}:${payload.id}`;
         if (seenEventIdsRef.current.has(eventKey)) {
           return;
@@ -319,6 +319,16 @@ function LogTerminalContent({ isOpen, onClose, request }: LogTerminalProps) {
       } catch {
         appendSystem("Received malformed stream payload.", "error", "logs");
       }
+    };
+
+    // Handle generic SSE messages
+    source.onmessage = (event) => {
+      handleMessage(event.data);
+    };
+
+    // Handle explicitly named "job-update" events
+    source.addEventListener("job-update", (event) => {
+      handleMessage((event as MessageEvent).data);
     });
 
     source.onerror = () => {

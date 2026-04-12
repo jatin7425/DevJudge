@@ -174,6 +174,15 @@ def run_analysis_job(job_id: str, username: str) -> None:
 
     except Exception as error:
         logging.exception("Worker failed")
+        # Ensure the job is marked as failed in the database so the UI stops waiting
+        analysis_jobs_repository.update_status(
+            job_id,
+            JobStatus.FAILED,
+            error=str(error)
+        )
+        # Update user record to allow retries
+        users_repository.mark_initial_analysis_failed(username)
+        # Notify the live stream
         send_log(job_id, f"Job failed: {str(error)}", status="failed")
     finally:
         with _THREADS_LOCK:
