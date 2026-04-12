@@ -8,6 +8,7 @@ from db.models import JobStatus
 from repository.users import UsersRepository
 from pipeline.analyse import AnalysisPipeline
 from shared.live_logs import send_log
+from shared.job_runner import fail_timed_out_jobs
 
 
 analysis_jobs_repository = AnalysisJobsRepository()
@@ -70,3 +71,18 @@ def run_analysis_worker(msg: func.QueueMessage):
                 users_repository.mark_initial_analysis_failed(username)
 
             send_log(job_id, f"Job failed: {str(e)}", status="failed")
+
+
+@app.timer_trigger(
+    schedule="0 */20 * * * *",
+    arg_name="timer",
+    run_on_startup=False,
+    use_monitor=True
+)
+def cleanup_timed_out_jobs_worker(timer: func.TimerRequest):
+    logging.info("Starting scheduled cleanup for timed-out jobs.")
+    
+    count = fail_timed_out_jobs(timeout_minutes=20)
+    
+    if count > 0:
+        logging.info(f"Successfully timed out {count} stalled jobs.")

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 import logging
 import threading
 from typing import Any, Callable
@@ -224,6 +224,45 @@ def resume_active_jobs_inline() -> int:
         resumed += 1
 
     return resumed
+
+
+def fail_timed_out_jobs(timeout_minutes: int = 20) -> int:
+    """
+    Finds jobs stuck in RUNNING state for too long and marks them as FAILED.
+    """
+    active_jobs = analysis_jobs_repository.list_active_jobs(limit=100)
+    now = datetime.now(timezone.utc)
+    failed_count = 0
+
+    for job in active_jobs:
+        if job.status != JobStatus.RUNNING:
+            continue
+
+        # If started_at is missing, we can't safely timeout based on time
+        if not job.started_at:
+            continue
+
+        started_dt = job.started_at
+        if isinstance(started_dt, str):
+            started_dt = datetime.fromisoformat(started_dt)
+
+        if (now - started_dt) > timedelta(minutes=timeout_minutes):
+            error_msg = f"Job timed out: Running for more than {timeout_minutes} minutes."
+            logging.warning(f"Timing out job {job.job_id} for user {job.user_id}")
+
+            analysis_jobs_repository.update_status(
+                job.job_id,
+                JobStatus.FAILED,
+                error=error_msg
+            )
+            username = _resolve_username_from_user_id(job.user_id)
+            if username:
+                users_repository.mark_initial_analysis_failed(username)
+
+            send_log(job.job_id, error_msg, status="failed")
+            failed_count += 1
+
+    return failed_count
 
 
 def _resolve_username_from_user_id(user_id: int) -> str | None:
